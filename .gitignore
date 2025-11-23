@@ -34,3 +34,7 @@ go.work.sum
 # Build files
 bin/
 
+
+analysis/.ipynb_checkpoints/
+
+analysis/*.csv
