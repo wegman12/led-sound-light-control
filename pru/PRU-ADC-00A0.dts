@@ -1,13 +1,13 @@
 /*
  * Device Tree Overlay for PRU ADC Sampling
- * Enables PRU and configures AIN1 (P9_40) for analog input
+ * Enables PRU with OCP master access and configures AIN1 (P9_40) for analog input
  */
 
 /dts-v1/;
 /plugin/;
 
 / {
-    compatible = "ti,beaglebone", "ti,beaglebone-black";
+    compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,am33xx";
 
     /* Identification */
     part-number = "PRU-ADC";
@@ -26,38 +26,37 @@
         };
     };
 
-    /* Enable ADC */
+    /* Disable Linux IIO ADC driver to free ADC for PRU access */
     fragment@1 {
         target = <&tscadc>;
         __overlay__ {
-            status = "okay";
-            adc {
-                ti,adc-channels = <0 1 2 3 4 5 6 7>;
-                ti,chan-step-avg = <0x1 0x1 0x1 0x1 0x1 0x1 0x1 0x1>;
-                ti,chan-step-opendelay = <0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0>;
-                ti,chan-step-sampledelay = <0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0>;
-            };
+            status = "disabled";
         };
     };
 
-    /* Enable PRU */
+    /* Enable and configure PRU with OCP master access */
     fragment@2 {
         target = <&pruss>;
         __overlay__ {
             status = "okay";
+
+            /* Enable OCP master port for peripheral access */
+            pruss_cfg: cfg@26000 {
+                compatible = "ti,pruss-cfg", "syscon";
+                reg = <0x26000 0x2000>;
+                #address-cells = <1>;
+                #size-cells = <1>;
+                ranges = <0x0 0x26000 0x2000>;
+            };
         };
     };
 
-    /* PRU ICSS configuration */
+    /* Configure PRU0 for ADC access */
     fragment@3 {
-        target = <&ocp>;
+        target-path = "/ocp/pruss@4a300000/pru@4a334000";
         __overlay__ {
-            pru_adc {
-                compatible = "ti,pru-rproc";
-                pinctrl-names = "default";
-                pinctrl-0 = <&pru_adc_pins>;
-                status = "okay";
-            };
+            /* Grant PRU0 access to ADC memory region */
+            ti,pru-interrupt-map = <0 0 0>;
         };
     };
 };
