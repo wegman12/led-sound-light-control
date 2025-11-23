@@ -1,9 +1,7 @@
 package sound
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"math"
 	"sync"
@@ -13,7 +11,7 @@ import (
 )
 
 type FrequencyResult struct {
-	Magnitudes       [BufferSize]float64
+	Magnitudes       [BufferSize/2 - 1]float64
 	SamplingDuration time.Duration
 }
 type processor struct {
@@ -42,7 +40,7 @@ func (p *processor) extractFrequencies(ctx context.Context) {
 			return
 		case record := <-p.bufferChannel:
 			p.resultChannel <- FrequencyResult{
-				Magnitudes:       convertToFrequency(record.bytes),
+				Magnitudes:       convertToFrequency(record.samples),
 				SamplingDuration: record.samplingDuration,
 			}
 		}
@@ -50,34 +48,19 @@ func (p *processor) extractFrequencies(ctx context.Context) {
 	}
 }
 
-func convertToFrequency(record [BufferSize * recordSize]byte) [BufferSize]float64 {
+func convertToFrequency(record [BufferSize]uint16) [BufferSize/2 - 1]float64 {
 	fftInput := make([]complex128, BufferSize)
 
-	for i := 0; i < recordSize*BufferSize; i += recordSize {
-		fftInput[i/recordSize] = complex(bytesToFloat64(record[i:i+recordSize]), 0)
+	for i := 0; i < BufferSize; i += 1 {
+		fftInput[i] = complex(float64(record[i]), 0)
 	}
 	fftResult := fft.Fft(fftInput, false)
 
-	back := [BufferSize]float64{}
-	for i := 0; i < len(back); i++ {
-		back[i] = math.Sqrt(math.Pow(real(fftResult[i]), 2) + math.Pow(imag(fftResult[i]), 2))
+	back := [BufferSize/2 - 1]float64{}
+	// Since input are real values, only the first half of frequencies are meaningful (imaginary mirrored in second half)
+	// Also drop the DC 0 frequency as that has high noise
+	for i := 1; i < len(back)/2; i++ {
+		back[i-1] = math.Sqrt(math.Pow(real(fftResult[i]), 2) + math.Pow(imag(fftResult[i]), 2))
 	}
 	return back
-}
-
-func bytesToFloat64(byteSlice []byte) float64 {
-	// For PRU mode: read 16-bit ADC value (2 bytes)
-	if len(byteSlice) >= 2 {
-		value := binary.LittleEndian.Uint16(byteSlice[0:2])
-		return float64(value)
-	}
-
-	// Legacy mode: read full uint64
-	buf := bytes.NewReader(byteSlice)
-	var back uint64
-	err := binary.Read(buf, binary.LittleEndian, &back)
-	if err != nil {
-		fmt.Println("binary.Read failed:", err)
-	}
-	return float64(back)
 }

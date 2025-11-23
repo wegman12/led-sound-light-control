@@ -126,7 +126,7 @@ func (r *FastIIOReader) ReadSamples() ([]uint16, error) {
 		return nil, fmt.Errorf("reader not started")
 	}
 
-	// Determine sample size (12-bit ADC typically uses 2 bytes per sample)
+	// Determine sample size (12-bit ADC typically uses 2 samples per sample)
 	sampleSize := 2
 
 	// Read buffer

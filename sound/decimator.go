@@ -8,7 +8,6 @@ import (
 type Decimator struct {
 	inputRate  int     // Input sample rate (e.g., 200000 Hz)
 	outputRate int     // Desired output rate (e.g., 48000 Hz)
-	interval   float64 // Time between output samples in seconds
 	nextTime   float64 // Next sample time in seconds
 	startTime  time.Time
 }
@@ -18,7 +17,6 @@ func NewDecimator(inputRate, outputRate int) *Decimator {
 	return &Decimator{
 		inputRate:  inputRate,
 		outputRate: outputRate,
-		interval:   1.0 / float64(outputRate),
 		nextTime:   0.0,
 		startTime:  time.Now(),
 	}
@@ -49,7 +47,7 @@ func (d *Decimator) Decimate(samples []uint16) []uint16 {
 		// Check if this sample is at or past the next output time
 		if currentTime >= d.nextTime {
 			output = append(output, sample)
-			d.nextTime += d.interval
+			d.nextTime += inputInterval
 		}
 	}
 

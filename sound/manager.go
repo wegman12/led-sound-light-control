@@ -13,7 +13,7 @@ type Manager struct {
 
 func (m *Manager) Start(ctx context.Context) {
 	if m.ResultsChannel == nil {
-		m.ResultsChannel = make(chan FrequencyResult, BufferSize*10)
+		m.ResultsChannel = make(chan FrequencyResult, BufferSize)
 	}
 	if m.cancel != nil {
 		m.cancel()

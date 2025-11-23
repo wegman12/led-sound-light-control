@@ -29,7 +29,7 @@ func doSoundTester(cmd *cobra.Command, args []string) error {
 	defer stop()
 
 	m := sound.Manager{
-		ResultsChannel: make(chan sound.FrequencyResult, sound.BufferSize*10),
+		ResultsChannel: make(chan sound.FrequencyResult, sound.BufferSize),
 	}
 
 	wg := &sync.WaitGroup{}
@@ -64,7 +64,7 @@ func exportResults(ctx context.Context, resultChannel chan sound.FrequencyResult
 			return
 		case result := <-resultChannel:
 			stringResults := []string{fmt.Sprintf("%v", result.SamplingDuration)}
-			magnitudes := utilities.Apply(result.Magnitudes[1:], func(v float64) string { return fmt.Sprint(v) })
+			magnitudes := utilities.Apply(result.Magnitudes[:], func(v float64) string { return fmt.Sprint(v) })
 			stringResults = append(stringResults, magnitudes...)
 			_, err = f.WriteString(strings.Join(stringResults, ",") + "\n")
 			if err != nil {
@@ -78,7 +78,7 @@ func writeHeader(f *os.File) {
 	binSize := float64(sound.SamplingRate) / sound.BufferSize
 	binDescriptions := make([]string, 0, sound.BufferSize)
 	binLower := binSize
-	for i := 1; i < sound.BufferSize; i++ {
+	for i := 1; i < sound.BufferSize/2; i++ {
 		binDescriptions = append(binDescriptions, fmt.Sprintf("%0.2f-%0.2f KHZ", binLower/1000, (binLower+binSize)/1000))
 		binLower += binSize
 	}

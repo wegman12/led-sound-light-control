@@ -58,10 +58,10 @@ var ledTester = &cobra.Command{
 		bbhw.SetPWMFreq(greenLed, frequencyHz)
 		bbhw.SetPWMFreq(whiteLed, frequencyHz)
 		bbhw.SetPWMFreq(blueLed, frequencyHz)
-		startBreathing(redLed, wg, ctx, breathingConfig{delay: 10 * time.Millisecond})
-		startBreathing(greenLed, wg, ctx, breathingConfig{delay: 5 * time.Millisecond})
-		startBreathing(whiteLed, wg, ctx, breathingConfig{delay: 15 * time.Millisecond})
-		startBreathing(blueLed, wg, ctx, breathingConfig{delay: 20 * time.Millisecond})
+		startBreathing(redLed, wg, ctx, breathingConfig{delay: 100 * time.Millisecond})
+		startBreathing(greenLed, wg, ctx, breathingConfig{delay: 50 * time.Millisecond})
+		startBreathing(whiteLed, wg, ctx, breathingConfig{delay: 150 * time.Millisecond})
+		startBreathing(blueLed, wg, ctx, breathingConfig{delay: 200 * time.Millisecond})
 		wg.Wait()
 		return nil
 	},

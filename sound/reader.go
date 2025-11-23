@@ -2,14 +2,13 @@ package sound
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"sync"
 	"time"
 )
 
 type bufferPayload struct {
-	bytes            [BufferSize * recordSize]byte
+	samples          [BufferSize]uint16
 	samplingDuration time.Duration
 }
 
@@ -35,7 +34,7 @@ func (r *reader) readFromIIOFast(ctx context.Context) {
 
 	// Create IIO reader - sample at max speed (~200 kHz)
 	// Channel 1 = AIN1 (P9_40)
-	iioReader, err := NewFastIIOReader(1, 200000, 1024)
+	iioReader, err := NewFastIIOReader(1, HighSpeedRate, BufferSize)
 	if err != nil {
 		fmt.Printf("Error creating IIO reader: %v\n", err)
 		fmt.Println("Make sure:")
@@ -60,9 +59,9 @@ func (r *reader) readFromIIOFast(ctx context.Context) {
 	}
 
 	// Create decimator to convert to target sample rate
-	decimator := NewAntiAliasDecimator(200000, SamplingRate)
+	decimator := NewAntiAliasDecimator(HighSpeedRate, SamplingRate)
 
-	payload := [BufferSize * recordSize]byte{}
+	payload := [BufferSize]uint16{}
 	current := 0
 	lastFlush := time.Now()
 	lastStatsTime := time.Now()
@@ -91,17 +90,17 @@ func (r *reader) readFromIIOFast(ctx context.Context) {
 			decimatedSamples := decimator.Decimate(samples)
 			totalOutputSamples += uint64(len(decimatedSamples))
 
-			// Convert decimated samples to bytes and fill payload buffer
+			// Convert decimated samples to samples and fill payload buffer
 			for _, sample := range decimatedSamples {
 				// Store as little-endian 16-bit value
-				binary.LittleEndian.PutUint16(payload[current:current+2], sample)
-				current += recordSize
+				payload[current] = sample
+				current++
 
 				// When buffer is full, send it for processing
 				if current >= len(payload) {
 					duration := time.Since(lastFlush)
 					r.bufferChannel <- bufferPayload{
-						bytes:            payload,
+						samples:          payload,
 						samplingDuration: duration,
 					}
 					current = 0
@@ -124,4 +123,3 @@ func (r *reader) readFromIIOFast(ctx context.Context) {
 		}
 	}
 }
-
