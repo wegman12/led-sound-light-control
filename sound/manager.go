@@ -26,18 +26,13 @@ func (m *Manager) Start(ctx context.Context) {
 		}
 	}()
 
-	rawChannel := make(chan []byte, recordSize*BufferSize)
 	bufferChannel := make(chan bufferPayload, BufferSize)
 
 	wg := &sync.WaitGroup{}
 
 	r := reader{
-		rawChannel: rawChannel,
-	}
-	b := buffer{
-		rawChannel:    rawChannel,
 		bufferChannel: bufferChannel,
-		sleepTime:     0,
+		usePRU:        true, // Enable PRU mode for high-frequency sampling
 	}
 	p := processor{
 		bufferChannel: bufferChannel,
@@ -45,7 +40,6 @@ func (m *Manager) Start(ctx context.Context) {
 	}
 
 	p.Start(ctx, wg)
-	b.start(ctx, wg)
 	r.start(ctx, wg)
 	wg.Wait()
 	fmt.Println("Manager stopped")

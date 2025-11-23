@@ -1,61 +1,114 @@
 package sound
 
 import (
-	"bufio"
 	"context"
+	"encoding/binary"
 	"fmt"
-	"io"
-	"os"
 	"sync"
 	"time"
 )
 
-const iioFile = "/dev/iio:device0"
+type bufferPayload struct {
+	bytes            [BufferSize * recordSize]byte
+	samplingDuration time.Duration
+}
 
 type reader struct {
-	rawChannel chan []byte
-	sleepTime  time.Duration
+	bufferChannel chan bufferPayload
+	sleepTime     time.Duration
+	usePRU        bool // If true, use PRU reader; if false, use IIO (legacy)
 }
 
 func (r *reader) start(ctx context.Context, wg *sync.WaitGroup) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		r.readFromIio(ctx)
+		if r.usePRU {
+			r.readFromPRU(ctx)
+		} else {
+			r.readFromIIOLegacy(ctx)
+		}
 	}()
 }
 
-func (r *reader) readFromIio(ctx context.Context) {
+// readFromPRU reads samples from PRU shared memory
+func (r *reader) readFromPRU(ctx context.Context) {
 	if r.sleepTime <= 0 {
 		r.sleepTime = 1 * time.Millisecond
 	}
-	defer close(r.rawChannel)
-	iioDevice, err := os.Open(iioFile)
+	defer close(r.bufferChannel)
+
+	// Initialize PRU reader
+	pruReader, err := NewPRUReader()
 	if err != nil {
-		fmt.Printf("Error opening iioDevice: %v\n", err)
+		fmt.Printf("Error opening PRU shared memory: %v\n", err)
+		fmt.Println("Make sure:")
+		fmt.Println("  1. You're running as root (sudo)")
+		fmt.Println("  2. PRU firmware is loaded")
+		fmt.Println("  3. Device tree overlay is enabled")
 		return
 	}
-	defer iioDevice.Close() // Ensure the iioDevice is closed when the function exits
+	defer pruReader.Close()
 
-	bufReader := bufio.NewReader(iioDevice)
-	slot := make([]byte, BufferSize*recordSize*10)
+	fmt.Println("PRU reader initialized successfully")
+
+	payload := [BufferSize * recordSize]byte{}
+	current := 0
+	lastFlush := time.Now()
+	lastStatsTime := time.Now()
 
 	done := false
 
 	for !done {
 		select {
 		case <-ctx.Done():
-			fmt.Println("Stopping reader")
+			fmt.Println("Stopping PRU reader")
 			done = true
 		default:
-			n, readErr := bufReader.Read(slot)
-			if readErr == io.EOF {
+			// Read available samples from PRU
+			samples, err := pruReader.ReadSamples()
+			if err != nil {
+				fmt.Printf("Error reading PRU samples: %v\n", err)
 				done = true
 				break
 			}
-			r.rawChannel <- slot[:n]
+
+			// Convert samples to bytes and fill payload buffer
+			for _, sample := range samples {
+				// Store as little-endian 16-bit value
+				binary.LittleEndian.PutUint16(payload[current:current+2], sample)
+				current += recordSize
+
+				// When buffer is full, send it for processing
+				if current >= len(payload) {
+					duration := time.Since(lastFlush)
+					r.bufferChannel <- bufferPayload{
+						bytes:            payload,
+						samplingDuration: duration,
+					}
+					current = 0
+					lastFlush = time.Now()
+				}
+			}
+
+			// Print stats every 5 seconds
+			if time.Since(lastStatsTime) > 5*time.Second {
+				sampleCount, overrunCount := pruReader.GetStats()
+				if overrunCount > 0 {
+					fmt.Printf("PRU Stats - Total samples: %d, Overruns: %d (buffer too slow!)\n",
+						sampleCount, overrunCount)
+				}
+				lastStatsTime = time.Now()
+			}
+
 			time.Sleep(r.sleepTime)
 		}
 	}
-	return
+}
+
+// readFromIIOLegacy is the old IIO-based reader (kept for fallback)
+func (r *reader) readFromIIOLegacy(ctx context.Context) {
+	fmt.Println("IIO reader not implemented in PRU mode")
+	fmt.Println("Please use PRU mode by setting reader.usePRU = true")
+	close(r.bufferChannel)
 }

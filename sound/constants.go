@@ -1,7 +1,7 @@
 package sound
 
 const (
-	SamplingRate = 2000
-	BufferSize   = 216 // records
-	recordSize   = 12  // bytes
+	SamplingRate = 48000 // 48 kHz sampling via PRU
+	BufferSize   = 512   // samples (increased for higher sample rate)
+	recordSize   = 2     // bytes (16-bit ADC value from PRU)
 )

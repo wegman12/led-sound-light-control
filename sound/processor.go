@@ -66,10 +66,15 @@ func convertToFrequency(record [BufferSize * recordSize]byte) [BufferSize]float6
 }
 
 func bytesToFloat64(byteSlice []byte) float64 {
+	// For PRU mode: read 16-bit ADC value (2 bytes)
+	if len(byteSlice) >= 2 {
+		value := binary.LittleEndian.Uint16(byteSlice[0:2])
+		return float64(value)
+	}
+
+	// Legacy mode: read full uint64
 	buf := bytes.NewReader(byteSlice)
 	var back uint64
-
-	// Use binary.BigEndian or binary.LittleEndian depending on how the bytes are ordered
 	err := binary.Read(buf, binary.LittleEndian, &back)
 	if err != nil {
 		fmt.Println("binary.Read failed:", err)
