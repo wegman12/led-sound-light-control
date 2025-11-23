@@ -32,7 +32,8 @@ func (m *Manager) Start(ctx context.Context) {
 
 	r := reader{
 		bufferChannel: bufferChannel,
-		usePRU:        true, // Enable PRU mode for high-frequency sampling
+		usePRU:        false,     // PRU mode (requires OCP access)
+		useIIOFast:    true,      // Use high-speed IIO with decimation (200kHz -> 48kHz)
 	}
 	p := processor{
 		bufferChannel: bufferChannel,

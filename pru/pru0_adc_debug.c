@@ -6,6 +6,12 @@
 typedef unsigned int uint32_t;
 typedef unsigned short uint16_t;
 
+/* PRU-ICSS CFG Registers - Enable OCP master port */
+#define PRUSS_CFG_BASE  0x00026000
+#define PRUSS_CFG_SYSCFG (*(volatile uint32_t *)(PRUSS_CFG_BASE + 0x04))
+#define SYSCFG_STANDBY_INIT (1 << 4)  /* Enable OCP master port */
+#define SYSCFG_IDLE_MODE_NO (1 << 2)  /* No standby mode */
+
 /* ADC register addresses */
 #define ADC_TSC         0x44E0D000
 #define ADC_CTRL        (*(volatile uint32_t *)(ADC_TSC + 0x40))
@@ -45,6 +51,12 @@ void delay(uint32_t cycles) {
 int main(void) {
     uint32_t loop_count = 0;
     uint16_t sample_index = 0;
+
+    /* CRITICAL: Enable PRU OCP master port for peripheral access */
+    PRUSS_CFG_SYSCFG = SYSCFG_STANDBY_INIT | SYSCFG_IDLE_MODE_NO;
+
+    /* Small delay after enabling OCP */
+    delay(10000);
 
     /* Initialize debug info */
     DEBUG->adc_ctrl = 0;
