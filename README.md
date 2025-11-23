@@ -1,13 +1,13 @@
 # LED Sound Light Control
 
-Control LED lights based on real-time audio frequency analysis using BeagleBone Black's PRU for high-speed ADC sampling.
+Control LED lights based on real-time audio frequency analysis using BeagleBone Black's high-speed ADC sampling.
 
 ## Features
 
-- **48 kHz ADC Sampling**: Uses PRU (Programmable Real-time Unit) for deterministic real-time sampling
+- **48 kHz ADC Sampling**: High-speed Linux IIO sampling (~200 kHz) with intelligent decimation to 48 kHz
 - **Real-time FFT Analysis**: Frequency domain analysis of audio signals
-- **High Performance**: PRU-based sampling eliminates Linux kernel scheduling jitter
-- **Low Latency**: Direct memory-mapped communication between PRU and Go application
+- **Anti-Aliasing Filter**: Software filtering prevents aliasing during decimation
+- **Low Latency**: Direct IIO buffer access with minimal overhead
 
 ## Hardware Requirements
 
@@ -18,60 +18,40 @@ Control LED lights based on real-time audio frequency analysis using BeagleBone 
 
 ## Quick Start
 
-### 1. Initial Setup on BeagleBone Black
-
-```bash
-cd scripts
-sudo ./setup_beaglebone.sh
-sudo reboot
-```
-
-### 2. Verify PRU Status
-
-```bash
-./scripts/check_pru_status.sh
-```
-
-### 3. Build and Test
+### Build and Test
 
 ```bash
 # Build the application
 make build
 
-# Test PRU sampling (run as root)
-sudo ./bin/led-sound-light-control pru-test
+# Test sound sampling (run as root for IIO access)
+sudo ./bin/led-sound-light-control test-sound
 
-# Run the full application
-sudo ./bin/led-sound-light-control
+# Test IIO sampling directly
+sudo ./bin/led-sound-light-control iio-test
 ```
 
 ## Project Structure
 
 ```
 .
-├── pru/                    # PRU firmware for ADC sampling
-│   ├── pru0_adc_sampler.c  # PRU C firmware (48 kHz sampling)
-│   ├── Makefile            # PRU build system
-│   ├── PRU-ADC-00A0.dts    # Device tree overlay
-│   └── README.md           # Detailed PRU documentation
 ├── sound/                  # Audio processing package
-│   ├── pru_reader.go       # Memory-mapped PRU interface
-│   ├── reader.go           # Sample reader with PRU support
+│   ├── iio_fast_reader.go  # High-speed IIO buffered reader
+│   ├── decimator.go        # Sample rate decimation with anti-aliasing
+│   ├── reader.go           # Sample reader with IIO integration
 │   ├── processor.go        # FFT frequency analysis
 │   └── manager.go          # Audio processing manager
-├── scripts/                # Deployment and setup scripts
-│   ├── setup_beaglebone.sh # One-time BeagleBone setup
-│   ├── deploy_pru.sh       # Quick PRU firmware deployment
-│   └── check_pru_status.sh # PRU status and debugging
-└── cmd/                    # CLI commands
-    └── pru-test.go         # PRU sampling test utility
+├── cmd/                    # CLI commands
+│   ├── sound-tester.go     # Sound sampling test with CSV export
+│   └── iio-test.go         # IIO sampling test utility
+└── utilities/              # Helper functions
 ```
 
 ## How It Works
 
-1. **PRU Firmware**: Samples AIN1 at 48 kHz and writes to shared memory ring buffer
-2. **Go Reader**: Memory-maps PRU shared memory and reads samples in real-time
-3. **Processor**: Performs FFT analysis on sample buffers
+1. **IIO Reader**: Samples AIN1 at ~200 kHz using Linux IIO buffered mode
+2. **Decimator**: Applies anti-aliasing filter and decimates to 48 kHz
+3. **Processor**: Performs FFT analysis on 48 kHz sample buffers
 4. **Manager**: Coordinates the pipeline and exposes results
 
 ## Configuration
@@ -80,41 +60,41 @@ sudo ./bin/led-sound-light-control
 
 Current: **48 kHz** (configured in `sound/constants.go`)
 
-To change, edit both:
-- `sound/constants.go`: Update `SamplingRate` constant
-- `pru/pru0_adc_sampler.c`: Update `CYCLES_PER_SAMPLE` calculation
-- Rebuild both: `make build && cd pru && make && sudo ../scripts/deploy_pru.sh`
+The system samples at ~200 kHz from IIO and decimates to 48 kHz. To change the target rate:
+- Edit `sound/constants.go`: Update `SamplingRate` constant
+- Rebuild: `make build`
+
+The decimator will automatically adjust the decimation ratio.
 
 ### Buffer Size
 
 Adjust `BufferSize` in `sound/constants.go` based on your latency requirements.
 
-## Documentation
-
-- **[PRU Setup Guide](pru/PRU_SETUP.md)**: Detailed PRU installation and configuration
-- **[PRU README](pru/README.md)**: PRU firmware architecture and development
-
 ## Troubleshooting
 
 ### Permission Denied
-Run as root: `sudo ./bin/led-sound-light-control`
+Run as root for IIO access: `sudo ./bin/led-sound-light-control test-sound`
 
-### PRU Not Running
+### No ADC Device
+Check if IIO device exists:
 ```bash
-./scripts/check_pru_status.sh
-# If offline:
-echo 'start' | sudo tee /sys/class/remoteproc/remoteproc1/state
+ls -la /sys/bus/iio/devices/iio:device0/
 ```
 
-### Buffer Overruns
-Reduce sleep time in reader or increase buffer size. Monitor with `pru-test` command.
+### Low Sample Rate
+If you're not getting the expected sample rate, check:
+```bash
+# View actual IIO sample rate
+cat /sys/bus/iio/devices/iio:device0/sampling_frequency 2>/dev/null
+```
 
 ## Performance
 
-- **Sampling Rate**: 48,000 samples/second
-- **Timing Precision**: Microsecond-level (PRU deterministic execution)
+- **Input Sampling Rate**: ~200,000 samples/second (IIO buffered mode)
+- **Output Sampling Rate**: 48,000 samples/second (after decimation)
+- **Timing Precision**: Good (hardware-triggered IIO with software decimation)
 - **Latency**: ~10-20ms (depends on buffer size)
-- **CPU Usage**: Low (PRU handles sampling independently)
+- **CPU Usage**: Low (IIO uses DMA, minimal CPU for decimation)
 
 ## License
 
