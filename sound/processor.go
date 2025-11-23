@@ -59,8 +59,8 @@ func convertToFrequency(record [BufferSize]uint16) [BufferSize/2 - 1]float64 {
 	back := [BufferSize/2 - 1]float64{}
 	// Since input are real values, only the first half of frequencies are meaningful (imaginary mirrored in second half)
 	// Also drop the DC 0 frequency as that has high noise
-	for i := 1; i < len(back)/2; i++ {
-		back[i-1] = math.Sqrt(math.Pow(real(fftResult[i]), 2) + math.Pow(imag(fftResult[i]), 2))
+	for i := 0; i < len(back); i++ {
+		back[i] = math.Sqrt(math.Pow(real(fftResult[i+1]), 2) + math.Pow(imag(fftResult[i+1]), 2))
 	}
 	return back
 }
