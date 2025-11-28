@@ -16,9 +16,9 @@ const (
 )
 
 type flasher struct {
-	HighDuration time.Duration
-	LowDuration  time.Duration
-	Delay        time.Duration
+	HighDuration utilities.Duration `json:"high_duration"`
+	LowDuration  utilities.Duration `json:"low_duration"`
+	Delay        utilities.Duration `json:"delay"`
 
 	l      led.Led
 	cancel context.CancelFunc
@@ -47,9 +47,9 @@ func newFlasher(l led.Led, cfg json.RawMessage) (*flasher, error) {
 }
 
 func (f *flasher) ensureDefaults() {
-	utilities.SetValueOrDefault(&f.HighDuration, flasherDefaultHighDuration)
-	utilities.SetValueOrDefault(&f.LowDuration, flasherDefaultLowDuration)
-	utilities.SetValueOrDefault(&f.Delay, flasherDefaultDelay)
+	utilities.SetValueOrDefault(&f.HighDuration, utilities.Duration(flasherDefaultHighDuration))
+	utilities.SetValueOrDefault(&f.LowDuration, utilities.Duration(flasherDefaultLowDuration))
+	utilities.SetValueOrDefault(&f.Delay, utilities.Duration(flasherDefaultDelay))
 
 }
 
@@ -64,15 +64,17 @@ func (f *flasher) flashUntilContextCancelled(ctx context.Context) {
 			f.l.SetPower(0.0)
 			return
 		default:
-			if onLow && time.Since(lastSwitch) > f.LowDuration {
+			if onLow && time.Since(lastSwitch) > time.Duration(f.LowDuration) {
 				f.l.Enable()
 				onLow = false
-			} else if !onLow && time.Since(lastSwitch) > f.HighDuration {
+				lastSwitch = time.Now()
+			} else if !onLow && time.Since(lastSwitch) > time.Duration(f.HighDuration) {
 				f.l.SetPower(0.0)
 				f.l.Disable()
 				onLow = true
+				lastSwitch = time.Now()
 			}
-			time.Sleep(f.LowDuration)
+			time.Sleep(time.Duration(f.LowDuration))
 		}
 	}
 }

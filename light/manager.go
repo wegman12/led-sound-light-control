@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/wegman12/go-bbhw"
 	"github.com/wegman12/led-sound-light-control/light/behavior"
 	"github.com/wegman12/led-sound-light-control/light/led"
+	"github.com/wegman12/led-sound-light-control/utilities"
 )
 
 type Manager struct {
@@ -13,48 +15,37 @@ type Manager struct {
 	behaviors []behavior.Behavior
 }
 
-type ManagerConfig struct {
-	Behaviors []BehaviorConfig `json:"behaviors"`
-}
-
-type BehaviorConfig struct {
-	Behavior string          `json:"behavior"`
-	Color    string          `json:"color"`
-	Config   json.RawMessage `json:"config"`
-}
-
 func NewManager(cfg ManagerConfig) (*Manager, error) {
+
+	err := bbhw.LoadOverlayForSysfsPWM()
+	if err != nil {
+		return nil, err
+	}
+
 	leds, err := createLeds()
 	if err != nil {
-		return nil, err
+		return &Manager{
+			leds: leds,
+		}, err
 	}
 	behaviors, err := createBehaviors(leds, cfg.Behaviors)
-	if err != nil {
-		return nil, err
-	}
 	return &Manager{
 		leds:      leds,
 		behaviors: behaviors,
-	}, nil
+	}, err
 }
 
 func (m *Manager) Close() {
 	m.Stop()
-	for _, l := range m.leds {
-		l.Close()
-	}
+	utilities.ForEachValue(m.leds, func(l led.Led) { l.Close() })
 }
 
 func (m *Manager) Stop() {
-	for _, b := range m.behaviors {
-		b.Stop()
-	}
+	utilities.ForEach(m.behaviors, func(b behavior.Behavior) { b.Stop() })
 }
 
 func (m *Manager) Start(ctx context.Context) {
-	for _, b := range m.behaviors {
-		b.Start(ctx)
-	}
+	utilities.ForEach(m.behaviors, func(b behavior.Behavior) { b.Start(ctx) })
 }
 
 func (m *Manager) AddBehavior(ledColor led.Color, behaviorType behavior.BehaviorType, cfg json.RawMessage) error {
@@ -81,12 +72,6 @@ func createLeds() (map[led.Color]led.Led, error) {
 
 func createBehaviors(leds map[led.Color]led.Led, cfgs []BehaviorConfig) ([]behavior.Behavior, error) {
 	behaviors := make([]behavior.Behavior, 0)
-
-	type behaviorPayload struct {
-		color    led.Color
-		behavior behavior.BehaviorType
-		cfg      json.RawMessage
-	}
 
 	for _, cfg := range cfgs {
 		bt := behavior.LookupBehavior(cfg.Behavior)

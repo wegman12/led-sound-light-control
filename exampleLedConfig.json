@@ -1,0 +1,12 @@
+{
+  "behaviors": [
+    {
+      "behavior": "breathing",
+      "color": "red"
+    },
+    {
+      "behavior": "flashing",
+      "color": "red"
+    }
+  ]
+}

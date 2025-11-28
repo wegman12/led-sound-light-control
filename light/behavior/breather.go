@@ -19,10 +19,10 @@ const (
 )
 
 type breather struct {
-	Delay         time.Duration
-	Step          float64
-	MaxPowerValue float64
-	MinPowerValue float64
+	Delay         utilities.Duration `json:"delay"`
+	Step          float64            `json:"step"`
+	MaxPowerValue float64            `json:"max_power_value"`
+	MinPowerValue float64            `json:"min_power_value"`
 
 	l      led.Led
 	cancel context.CancelFunc
@@ -43,7 +43,7 @@ func newBreather(l led.Led, cfg json.RawMessage) (*breather, error) {
 }
 
 func (b *breather) ensureDefaults() {
-	utilities.SetValueOrDefault(&b.Delay, breatherDefaultDelay)
+	utilities.SetValueOrDefault(&b.Delay, utilities.Duration(breatherDefaultDelay))
 	utilities.SetValueOrDefault(&b.Step, breatherDefaultStep)
 	utilities.SetValueOrDefault(&b.MaxPowerValue, breatherDefaultMaxPower)
 	utilities.SetValueOrDefault(&b.MinPowerValue, breatherDefaultMinPower)
@@ -79,7 +79,7 @@ func (b *breather) breathUntilContextCancelled(ctx context.Context) {
 				power = b.MinPowerValue
 				b.Step = -b.Step
 			}
-			time.Sleep(b.Delay)
+			time.Sleep(time.Duration(b.Delay))
 		}
 	}
 }
