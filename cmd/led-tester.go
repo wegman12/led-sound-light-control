@@ -1,17 +1,16 @@
 package cmd
 
 import (
-	"context"
+	"encoding/json"
 	"os"
 	"os/signal"
-	"sync"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/wegman12/go-bbhw"
+	"github.com/wegman12/led-sound-light-control/light/behavior"
+	"github.com/wegman12/led-sound-light-control/light/led"
+	"github.com/wegman12/led-sound-light-control/utilities"
 )
-
-const frequencyHz = 4000
 
 var ledTester = &cobra.Command{
 	Use:   "test-led",
@@ -30,76 +29,60 @@ var ledTester = &cobra.Command{
 			return err
 		}
 
-		redLed, err := bbhw.NewPWMChipPWM(7, 1)
-		if err != nil {
-			return err
-		}
-		greenLed, err := bbhw.NewPWMChipPWM(7, 0)
+		leds, err := createLeds()
+		defer func() {
+			for _, led := range leds {
+				led.Close()
+			}
+		}()
+
+		behaviors, err := createBehaviors(leds)
+		defer func() {
+			for _, behavior := range behaviors {
+				behavior.Stop()
+			}
+		}()
 		if err != nil {
 			return err
 		}
 
-		whiteLed, err := bbhw.NewPWMChipPWM(5, 1)
-		if err != nil {
-			return err
-		}
+		utilities.ForEach(behaviors, func(b behavior.Behavior) { b.Start(ctx) })
 
-		blueLed, err := bbhw.NewPWMChipPWM(5, 0)
-		if err != nil {
-			return err
-		}
-		defer redLed.Close()
-		defer greenLed.Close()
-		defer whiteLed.Close()
-		defer blueLed.Close()
-
-		wg := &sync.WaitGroup{}
-		bbhw.SetPWMFreq(redLed, frequencyHz)
-		bbhw.SetPWMFreq(greenLed, frequencyHz)
-		bbhw.SetPWMFreq(whiteLed, frequencyHz)
-		bbhw.SetPWMFreq(blueLed, frequencyHz)
-		startBreathing(redLed, wg, ctx, breathingConfig{delay: 100 * time.Millisecond})
-		startBreathing(greenLed, wg, ctx, breathingConfig{delay: 50 * time.Millisecond})
-		startBreathing(whiteLed, wg, ctx, breathingConfig{delay: 150 * time.Millisecond})
-		startBreathing(blueLed, wg, ctx, breathingConfig{delay: 200 * time.Millisecond})
-		wg.Wait()
+		<-ctx.Done()
 		return nil
 	},
 }
 
-type breathingConfig struct {
-	delay time.Duration
-	step  float64
+func createLeds() (map[led.Color]led.Led, error) {
+	leds := make(map[led.Color]led.Led)
+	for _, color := range []led.Color{led.RedLedColor, led.GreenLedColor, led.WhiteLedColor, led.BlueLedColor} {
+		l, err := led.MakeLedColor(color)
+		if err != nil {
+			return leds, err
+		}
+		leds[color] = l
+	}
+	return leds, nil
 }
 
-func startBreathing(led *bbhw.BBPWMPin, wg *sync.WaitGroup, ctx context.Context, cfg breathingConfig) {
-	wg.Add(1)
-	go func() {
-		if cfg.delay <= 0 {
-			cfg.delay = 50 * time.Millisecond
+func createBehaviors(leds map[led.Color]led.Led) ([]behavior.Behavior, error) {
+	behaviors := make([]behavior.Behavior, 0)
+
+	type behaviorPayload struct {
+		color    led.Color
+		behavior behavior.BehaviorType
+		cfg      json.RawMessage
+	}
+
+	for _, payload := range []behaviorPayload{
+		{color: led.RedLedColor, behavior: behavior.FlashingBehaviorType},
+		{color: led.RedLedColor, behavior: behavior.BreathingBehaviorType},
+	} {
+		b, err := behavior.CreateBehavior(leds[payload.color], payload.behavior, payload.cfg)
+		if err != nil {
+			return behaviors, err
 		}
-		if cfg.step == 0 {
-			cfg.step = 0.01
-		}
-		power := 0.0
-		for {
-			select {
-			case <-ctx.Done():
-				wg.Done()
-				bbhw.SetDuty(led, 0)
-				return
-			default:
-				bbhw.SetDuty(led, power)
-				power += cfg.step
-				if power > 1.0 {
-					power = 1.0
-					cfg.step = -cfg.step
-				} else if power < 0.0 {
-					power = 0.0
-					cfg.step = -cfg.step
-				}
-				time.Sleep(cfg.delay) // Simulate work
-			}
-		}
-	}()
+		behaviors = append(behaviors, b)
+	}
+	return behaviors, nil
 }

@@ -1,4 +1,4 @@
-package sound
+package sampling
 
 import (
 	"encoding/binary"
@@ -6,7 +6,8 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"strings"
+
+	"go.uber.org/zap"
 )
 
 const (
@@ -14,35 +15,40 @@ const (
 	IIO_BUFFER_PATH = "/dev/iio:device0"
 )
 
-// FastIIOReader provides high-speed ADC sampling using Linux IIO buffered mode
-type FastIIOReader struct {
+// fastIIOReader provides high-speed ADC sampling using Linux IIO buffered mode
+type fastIIOReader struct {
 	devicePath string
 	bufferDev  *os.File
 	channel    int // AIN channel (0-7)
-	sampleRate int
 	bufferSize int
+	buffer     []byte
+	samples    []uint16
 	isEnabled  bool
+	logger     *zap.Logger
 }
 
-// NewFastIIOReader creates a new IIO reader configured for high-speed sampling
-func NewFastIIOReader(channel int, sampleRate int, bufferSize int) (*FastIIOReader, error) {
-	reader := &FastIIOReader{
+// newFastIioSampler creates a new IIO Sampler configured for high-speed sampling
+func newFastIioSampler(channel int, bufferSize int, logger *zap.Logger) (*fastIIOReader, error) {
+	r := &fastIIOReader{
 		devicePath: IIO_DEVICE,
 		channel:    channel,
-		sampleRate: sampleRate,
 		bufferSize: bufferSize,
 		isEnabled:  false,
+		logger:     logger,
 	}
 
 	// Configure the IIO device
-	if err := reader.configure(); err != nil {
+	if err := r.configure(); err != nil {
 		return nil, fmt.Errorf("failed to configure IIO: %w", err)
 	}
 
-	return reader, nil
+	return r, nil
 }
 
-func (r *FastIIOReader) configure() error {
+func (r *fastIIOReader) configure() error {
+	if r.logger == nil {
+		r.logger = zap.NewNop()
+	}
 	// Enable the specific channel
 	scanElementPath := fmt.Sprintf("%s/scan_elements/in_voltage%d_en", r.devicePath, r.channel)
 	if err := writeFile(scanElementPath, "1"); err != nil {
@@ -55,18 +61,14 @@ func (r *FastIIOReader) configure() error {
 		return fmt.Errorf("failed to set buffer length: %w", err)
 	}
 
-	// Try to set sampling frequency (may not be supported on all kernels)
-	samplingFreqPath := fmt.Sprintf("%s/sampling_frequency", r.devicePath)
-	if err := writeFile(samplingFreqPath, strconv.Itoa(r.sampleRate)); err != nil {
-		// Non-fatal, some kernels don't support this
-		fmt.Printf("Note: Could not set sampling frequency: %v\n", err)
-	}
+	r.buffer = make([]byte, r.bufferSize*2)
+	r.samples = make([]uint16, r.bufferSize)
 
 	return nil
 }
 
 // Start begins continuous sampling
-func (r *FastIIOReader) Start() error {
+func (r *fastIIOReader) Start() error {
 	if r.isEnabled {
 		return fmt.Errorf("already started")
 	}
@@ -92,7 +94,7 @@ func (r *FastIIOReader) Start() error {
 }
 
 // Stop halts sampling and closes resources
-func (r *FastIIOReader) Stop() error {
+func (r *fastIIOReader) Stop() error {
 	if !r.isEnabled {
 		return nil
 	}
@@ -121,17 +123,16 @@ func (r *FastIIOReader) Stop() error {
 
 // ReadSamples reads available samples from the IIO buffer
 // Returns slice of 12-bit ADC values (0-4095)
-func (r *FastIIOReader) ReadSamples() ([]uint16, error) {
+func (r *fastIIOReader) ReadSamples() ([]uint16, error) {
 	if !r.isEnabled || r.bufferDev == nil {
-		return nil, fmt.Errorf("reader not started")
+		return nil, fmt.Errorf("Sampler not started")
 	}
 
 	// Determine sample size (12-bit ADC typically uses 2 samples per sample)
 	sampleSize := 2
 
 	// Read buffer
-	buf := make([]byte, r.bufferSize*sampleSize)
-	n, err := r.bufferDev.Read(buf)
+	n, err := r.bufferDev.Read(r.buffer)
 	if err != nil && err != io.EOF {
 		return nil, fmt.Errorf("failed to read buffer: %w", err)
 	}
@@ -142,33 +143,16 @@ func (r *FastIIOReader) ReadSamples() ([]uint16, error) {
 
 	// Parse samples
 	numSamples := n / sampleSize
-	samples := make([]uint16, numSamples)
 
 	for i := 0; i < numSamples; i++ {
 		offset := i * sampleSize
 		// IIO typically uses little-endian 16-bit values
-		value := binary.LittleEndian.Uint16(buf[offset : offset+2])
+		value := binary.LittleEndian.Uint16(r.buffer[offset : offset+2])
 		// Mask to 12 bits
-		samples[i] = value & 0x0FFF
+		r.samples[i] = value & 0x0FFF
 	}
 
-	return samples, nil
-}
-
-// GetActualSampleRate attempts to read the actual configured sample rate
-func (r *FastIIOReader) GetActualSampleRate() (int, error) {
-	samplingFreqPath := fmt.Sprintf("%s/sampling_frequency", r.devicePath)
-	data, err := os.ReadFile(samplingFreqPath)
-	if err != nil {
-		return 0, err
-	}
-
-	rate, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return 0, err
-	}
-
-	return rate, nil
+	return r.samples[:numSamples], nil
 }
 
 // Helper function to write to sysfs files

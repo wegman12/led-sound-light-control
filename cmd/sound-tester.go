@@ -11,79 +11,164 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wegman12/led-sound-light-control/sound"
+	"github.com/wegman12/led-sound-light-control/sound/processing"
 	"github.com/wegman12/led-sound-light-control/utilities"
+	"go.uber.org/zap"
 )
 
-var soundTester = &cobra.Command{
-	Use:   "test-sound",
-	Short: "Test sound functionality from BBB board",
-	Long:  `Runs sound sampling in a loop and displays the fft results`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
-	RunE: doSoundTester,
+type soundTesterConfig struct {
+	bufferSize             int
+	samplingRate           int
+	targetInputRate        float64
+	baseCutoff             float64
+	midCutoff              float64
+	delayBetweenSamples    time.Duration
+	delayBetweenProcessing time.Duration
+	outputFile             string
+	debug                  bool
+}
+
+var cfg soundTesterConfig
+
+func makeSoundTester() *cobra.Command {
+	soundTester := &cobra.Command{
+		Use:   "test-sound",
+		Short: "Test sound functionality from BBB board",
+		Long:  `Runs sound sampling in a loop and displays the fft results`,
+		// Uncomment the following line if your bare application
+		// has an action associated with it:
+		// Run: func(cmd *cobra.Command, args []string) { },
+		RunE: doSoundTester,
+	}
+
+	soundTester.Flags().IntVarP(&cfg.bufferSize, "buffer-size", "p", 1024, "buffer size in bytes")
+	soundTester.Flags().IntVarP(&cfg.samplingRate, "sampling-rate", "s", 48000, "sampling rate")
+	soundTester.Flags().Float64Var(&cfg.targetInputRate, "target-input-rate", 200000.0, "expected un-decimated sampling rate")
+	soundTester.Flags().Float64Var(&cfg.baseCutoff, "base-cutoff", 120.0, "base cutoff")
+	soundTester.Flags().Float64Var(&cfg.midCutoff, "mid-cutoff", 2000.0, "mid cutoff")
+	soundTester.Flags().DurationVar(&cfg.delayBetweenProcessing, "delay-between-processing", time.Millisecond*1, "delay between processing processing")
+	soundTester.Flags().DurationVar(&cfg.delayBetweenSamples, "delay-between-samples", time.Millisecond*1, "delay between samples processing")
+	soundTester.Flags().StringVarP(&cfg.outputFile, "output-file", "o", "sound-test-result.csv", "output file to write the results to")
+	soundTester.Flags().BoolVarP(&cfg.debug, "debug", "d", false, "debug mode")
+
+	return soundTester
 }
 
 func doSoundTester(cmd *cobra.Command, args []string) error {
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 	defer stop()
 
-	m := sound.Manager{
-		ResultsChannel: make(chan sound.FrequencyResult, sound.BufferSize),
+	var logger *zap.Logger
+	var err error
+	if cfg.debug {
+		logger, err = zap.NewDevelopment()
+	} else {
+		logger, err = zap.NewProduction()
+	}
+	if err != nil {
+		fmt.Println("failed to initialize logger - using nop logger")
+		fmt.Println(err)
+		logger = zap.NewNop()
+	}
+
+	m, err := sound.NewManager(
+		cfg.bufferSize,
+		cfg.samplingRate,
+		cfg.targetInputRate,
+		cfg.baseCutoff,
+		cfg.midCutoff,
+		cfg.delayBetweenSamples,
+		cfg.delayBetweenProcessing,
+		logger,
+	)
+
+	if err != nil {
+		logger.Fatal("failed to create sound manager", zap.Error(err))
 	}
 
 	wg := &sync.WaitGroup{}
 
+	resultChannel := make(chan processing.Result, 10000)
+
 	wg.Add(2)
 	go func() {
+		logger.Info("starting processing manager")
 		defer wg.Done()
-		m.Start(ctx)
+		m.Start(resultChannel, ctx)
+		logger.Info("finished processing manager")
 	}()
 
 	go func() {
+		logger.Info("starting export manager")
 		defer wg.Done()
-		exportResults(ctx, m.ResultsChannel)
+		exportResults(ctx, resultChannel, logger)
+		logger.Info("export finished")
 	}()
 
 	wg.Wait()
 	return nil
 }
 
-func exportResults(ctx context.Context, resultChannel chan sound.FrequencyResult) {
-	f, err := os.Create("./sound-test-result.csv")
+func exportResults(ctx context.Context, resultChannel chan processing.Result, logger *zap.Logger) {
+	f, err := os.Create(cfg.outputFile)
 	if err != nil {
-		fmt.Println(err)
+		logger.Error("failed to create output file", zap.Error(err))
 		return
 	}
 	writeHeader(f)
-	defer f.Close()
+	defer func() {
+		err := f.Close()
+		logger.Info("results written", zap.String("file", cfg.outputFile))
+		if err != nil {
+			logger.Error("failed to close file", zap.Error(err))
+		}
+	}()
+	totalDuration := time.Duration(0)
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("stopping export")
+			logger.Debug("export finished")
 			return
 		case result := <-resultChannel:
-			stringResults := []string{fmt.Sprintf("%v", result.SamplingDuration)}
+			stringResults := []string{
+				fmt.Sprintf("%v", totalDuration.Milliseconds()),
+				fmt.Sprintf("%v", result.SignalStrength),
+				fmt.Sprintf("%v", result.Profile.Bass),
+				fmt.Sprintf("%v", result.Profile.Mid),
+				fmt.Sprintf("%v", result.Profile.Treble),
+			}
+			totalDuration += result.SamplingDuration
 			magnitudes := utilities.Apply(result.Magnitudes[:], func(v float64) string { return fmt.Sprint(v) })
 			stringResults = append(stringResults, magnitudes...)
 			_, err = f.WriteString(strings.Join(stringResults, ",") + "\n")
 			if err != nil {
-				fmt.Println("Failed to print results: " + err.Error())
+				logger.Error("failed to write results to file", zap.Error(err))
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
 func writeHeader(f *os.File) {
-	binSize := float64(sound.SamplingRate) / sound.BufferSize
-	binDescriptions := make([]string, 0, sound.BufferSize)
+	binSize := float64(cfg.samplingRate) / float64(cfg.bufferSize)
+	binDescriptions := make([]string, cfg.bufferSize/2-1)
 	binLower := binSize
-	for i := 1; i < sound.BufferSize/2; i++ {
-		binDescriptions = append(binDescriptions, fmt.Sprintf("%0.2f-%0.2f KHZ", binLower/1000, (binLower+binSize)/1000))
+	for i := 1; i < cfg.bufferSize/2; i++ {
+		binDescriptions[i-1] = fmt.Sprintf("%0.2f-%0.2f KHZ", binLower/1000, (binLower+binSize)/1000)
 		binLower += binSize
 	}
 
-	_, err := f.WriteString("Duration (ms)," + strings.Join(binDescriptions, ",") + "\n")
+	headers := []string{
+		"Timestamp (ms)",
+		"Signal Strength",
+		"Bass",
+		"Mid",
+		"Treble",
+	}
+
+	headers = append(headers, binDescriptions...)
+
+	_, err := f.WriteString(strings.Join(headers, ",") + "\n")
 	if err != nil {
 		fmt.Println(err)
 	}
