@@ -49,7 +49,7 @@ func CreateBehavior(t Type, cfg json.RawMessage) (Behavior, error) {
 	case FixedBehaviorType:
 		return newFixer(cfg)
 	case SkipperBehaviorType:
-		return nil, fmt.Errorf("skipper behavior has not been implemented yet")
+		return newSkipper(cfg)
 	default:
 		return nil, fmt.Errorf("unknown behavior type %d", t)
 	}
