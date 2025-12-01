@@ -1,37 +1,26 @@
 package behavior
 
 import (
-	"context"
 	"encoding/json"
 	"time"
 
-	"github.com/wegman12/led-sound-light-control/light/led"
 	"github.com/wegman12/led-sound-light-control/utilities"
 )
 
 const (
-	breatherDefaultDelay    = time.Millisecond * 50
-	breatherDefaultStep     = 0.01
-	breatherMinStep         = 0.001
-	breatherMaxStep         = 0.25
-	breatherDefaultMaxPower = 1.0
 	breatherDefaultMinPower = 0.0
+	breatherDefaultMaxPower = 1.0
+	breatherDefaultDuration = 1 * time.Second
 )
 
 type breather struct {
-	Delay         utilities.Duration `json:"delay"`
-	Step          float64            `json:"step"`
+	Duration      utilities.Duration `json:"duration"`
 	MaxPowerValue float64            `json:"max_power_value"`
 	MinPowerValue float64            `json:"min_power_value"`
-
-	l      led.Led
-	cancel context.CancelFunc
 }
 
-func newBreather(l led.Led, cfg json.RawMessage) (*breather, error) {
-	b := breather{
-		l: l,
-	}
+func newBreather(cfg json.RawMessage) (*breather, error) {
+	b := breather{}
 	if cfg != nil {
 		err := json.Unmarshal(cfg, &b)
 		if err != nil {
@@ -39,53 +28,32 @@ func newBreather(l led.Led, cfg json.RawMessage) (*breather, error) {
 		}
 	}
 
+	b.ensureDefaults()
+
 	return &b, nil
 }
 
 func (b *breather) ensureDefaults() {
-	utilities.SetValueOrDefault(&b.Delay, utilities.Duration(breatherDefaultDelay))
-	utilities.SetValueOrDefault(&b.Step, breatherDefaultStep)
+	utilities.SetValueOrDefault(&b.Duration, utilities.Duration(breatherDefaultDuration))
 	utilities.SetValueOrDefault(&b.MaxPowerValue, breatherDefaultMaxPower)
 	utilities.SetValueOrDefault(&b.MinPowerValue, breatherDefaultMinPower)
 
-	utilities.PinValueToRange(&b.Step, breatherMinStep, breatherMaxStep)
+	utilities.PinValueToRange(&b.Duration, utilities.Duration(100*time.Millisecond), utilities.Duration(100*time.Minute))
 	utilities.PinValueToRange(&b.MaxPowerValue, 0.55, 1.0)
 	utilities.PinValueToRange(&b.MinPowerValue, 0.0, 0.45)
 }
 
-func (b *breather) Start(ctx context.Context) {
-	b.Stop()
-	ctx, b.cancel = context.WithCancel(ctx)
-	go func() {
-		b.breathUntilContextCancelled(ctx)
-	}()
+func (b *breather) GetPower(t time.Duration) *float64 {
+	tn := float64(int64(t)%int64(2*b.Duration)) / float64(b.Duration)
+	next := 0.0
+	if tn < 1 {
+		next = b.MinPowerValue + tn*(b.MaxPowerValue-b.MinPowerValue)
+	} else {
+		next = b.MaxPowerValue - (tn-1)*(b.MaxPowerValue-b.MinPowerValue)
+	}
+	return &next
 }
 
-func (b *breather) breathUntilContextCancelled(ctx context.Context) {
-	b.ensureDefaults()
-	power := b.MinPowerValue
-	for {
-		select {
-		case <-ctx.Done():
-			b.l.SetPower(0.0)
-			return
-		default:
-			b.l.SetPower(power)
-			power += b.Step
-			if power > b.MaxPowerValue {
-				power = b.MaxPowerValue
-				b.Step = -b.Step
-			} else if power < b.MinPowerValue {
-				power = b.MinPowerValue
-				b.Step = -b.Step
-			}
-			time.Sleep(time.Duration(b.Delay))
-		}
-	}
-}
-
-func (b *breather) Stop() {
-	if b.cancel != nil {
-		b.cancel()
-	}
+func (b *breather) Weight() float64 {
+	return 1
 }

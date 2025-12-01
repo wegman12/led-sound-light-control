@@ -2,7 +2,7 @@ package light
 
 import (
 	"context"
-	"encoding/json"
+	"time"
 
 	"github.com/wegman12/go-bbhw"
 	"github.com/wegman12/led-sound-light-control/light/behavior"
@@ -11,9 +11,16 @@ import (
 )
 
 type Manager struct {
-	leds      map[led.Color]led.Led
-	behaviors []behavior.Behavior
+	leds            map[led.Color]led.Led
+	behaviorManager *behavior.Manager
+
+	startTime time.Time
+	cancel    context.CancelFunc
 }
+
+const (
+	defaultNextCycleDelay = 10 * time.Millisecond
+)
 
 func NewManager(cfg ManagerConfig) (*Manager, error) {
 
@@ -28,10 +35,10 @@ func NewManager(cfg ManagerConfig) (*Manager, error) {
 			leds: leds,
 		}, err
 	}
-	behaviors, err := createBehaviors(leds, cfg.Behaviors)
+	behaviors, err := createBehaviors(cfg.Behaviors)
 	return &Manager{
-		leds:      leds,
-		behaviors: behaviors,
+		leds:            leds,
+		behaviorManager: behavior.CreateManager(behaviors),
 	}, err
 }
 
@@ -41,21 +48,38 @@ func (m *Manager) Close() {
 }
 
 func (m *Manager) Stop() {
-	utilities.ForEach(m.behaviors, func(b behavior.Behavior) { b.Stop() })
+	if m.cancel != nil {
+		m.cancel()
+		m.cancel = nil
+	}
 }
 
 func (m *Manager) Start(ctx context.Context) {
-	utilities.ForEach(m.behaviors, func(b behavior.Behavior) { b.Start(ctx) })
+	m.Stop()
+	ctx, m.cancel = context.WithCancel(ctx)
+	m.startTime = time.Now()
+	go func() {
+		m.SetLedPowerUntilContextCancelled(ctx)
+	}()
 }
 
-func (m *Manager) AddBehavior(ledColor led.Color, behaviorType behavior.BehaviorType, cfg json.RawMessage) error {
-	b, err := behavior.CreateBehavior(m.leds[ledColor], behaviorType, cfg)
-	if err != nil {
-		return err
+func (m *Manager) SetLedPowerUntilContextCancelled(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			powers := m.behaviorManager.GetPower(time.Since(m.startTime))
+			for c, p := range powers {
+				if p == nil {
+					continue
+				}
+				m.leds[c].SetPower(*p)
+			}
+		}
+		time.Sleep(defaultNextCycleDelay)
 	}
 
-	m.behaviors = append(m.behaviors, b)
-	return nil
 }
 
 func createLeds() (map[led.Color]led.Led, error) {
@@ -70,18 +94,11 @@ func createLeds() (map[led.Color]led.Led, error) {
 	return leds, nil
 }
 
-func createBehaviors(leds map[led.Color]led.Led, cfgs []BehaviorConfig) ([]behavior.Behavior, error) {
-	behaviors := make([]behavior.Behavior, 0)
+func createBehaviors(cfgs []BehaviorConfig) (map[led.Color][]behavior.Behavior, error) {
+	behaviors := make(map[led.Color][]behavior.Behavior)
 
 	for _, cfg := range cfgs {
-		bt := behavior.LookupBehavior(cfg.Behavior)
-		color := led.LookupColor(cfg.Color)
-
-		b, err := behavior.CreateBehavior(leds[color], bt, cfg.Config)
-		if err != nil {
-			return behaviors, err
-		}
-		behaviors = append(behaviors, b)
+		behaviors[cfg.Color] = append(behaviors[cfg.Color], cfg.Behavior)
 	}
 
 	return behaviors, nil

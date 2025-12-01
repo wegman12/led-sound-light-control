@@ -11,6 +11,26 @@ func Apply[TIn, TOut any](values []TIn, applyFunc func(TIn) TOut) []TOut {
 	}
 	return back
 }
+
+func Filter[T any](values []T, filterFunc func(T) bool) []T {
+	back := make([]T, 0, len(values))
+	for i := range values {
+		if !filterFunc(values[i]) {
+			continue
+		}
+		back = append(back, values[i])
+	}
+	return back
+}
+
+func ApplyMap[TKey comparable, TValue, TOut any](values map[TKey]TValue, applyFunc func(TKey, TValue) TOut) map[TKey]TOut {
+	back := make(map[TKey]TOut, len(values))
+	for k, v := range values {
+		back[k] = applyFunc(k, v)
+	}
+	return back
+}
+
 func ForEach[TIn any](values []TIn, forEachFunc func(TIn)) {
 	for i := range values {
 		forEachFunc(values[i])

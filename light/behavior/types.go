@@ -1,24 +1,22 @@
 package behavior
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"github.com/wegman12/led-sound-light-control/light/led"
+	"time"
 )
 
-type BehaviorType int
+type Type int
 
 const (
-	BreathingBehaviorType BehaviorType = iota
+	BreathingBehaviorType Type = iota
 	FlashingBehaviorType
 	FixedBehaviorType
 	SkipperBehaviorType
 )
 
-func LookupBehavior(behaviorName string) BehaviorType {
+func LookupBehavior(behaviorName string) Type {
 	switch strings.ToLower(behaviorName) {
 	case "breathing":
 		return BreathingBehaviorType
@@ -33,19 +31,23 @@ func LookupBehavior(behaviorName string) BehaviorType {
 	}
 }
 
-type Behavior interface {
-	Start(ctx context.Context)
-	Stop()
+type Result struct {
+	value *float64
 }
 
-func CreateBehavior(l led.Led, t BehaviorType, cfg json.RawMessage) (Behavior, error) {
+type Behavior interface {
+	GetPower(t time.Duration) *float64
+	Weight() float64
+}
+
+func CreateBehavior(t Type, cfg json.RawMessage) (Behavior, error) {
 	switch t {
 	case BreathingBehaviorType:
-		return newBreather(l, cfg)
+		return newBreather(cfg)
 	case FlashingBehaviorType:
-		return newFlasher(l, cfg)
+		return newFlasher(cfg)
 	case FixedBehaviorType:
-		return nil, fmt.Errorf("fixed behavior has not been implemented yet")
+		return newFixer(cfg)
 	case SkipperBehaviorType:
 		return nil, fmt.Errorf("skipper behavior has not been implemented yet")
 	default:

@@ -1,11 +1,9 @@
 package behavior
 
 import (
-	"context"
 	"encoding/json"
 	"time"
 
-	"github.com/wegman12/led-sound-light-control/light/led"
 	"github.com/wegman12/led-sound-light-control/utilities"
 )
 
@@ -19,29 +17,18 @@ type flasher struct {
 	HighDuration utilities.Duration `json:"high_duration"`
 	LowDuration  utilities.Duration `json:"low_duration"`
 	Delay        utilities.Duration `json:"delay"`
-
-	l      led.Led
-	cancel context.CancelFunc
 }
 
-func (f *flasher) Start(ctx context.Context) {
-	f.Stop()
-	ctx, f.cancel = context.WithCancel(ctx)
-	go func() {
-		f.flashUntilContextCancelled(ctx)
-	}()
-}
-
-func newFlasher(l led.Led, cfg json.RawMessage) (*flasher, error) {
-	f := flasher{
-		l: l,
-	}
+func newFlasher(cfg json.RawMessage) (*flasher, error) {
+	f := flasher{}
 	if cfg != nil {
 		err := json.Unmarshal(cfg, &f)
 		if err != nil {
 			return nil, err
 		}
 	}
+
+	f.ensureDefaults()
 
 	return &f, nil
 }
@@ -51,36 +38,20 @@ func (f *flasher) ensureDefaults() {
 	utilities.SetValueOrDefault(&f.LowDuration, utilities.Duration(flasherDefaultLowDuration))
 	utilities.SetValueOrDefault(&f.Delay, utilities.Duration(flasherDefaultDelay))
 
+	utilities.PinValueToRange(&f.HighDuration, utilities.Duration(100*time.Millisecond), utilities.Duration(100*time.Minute))
+	utilities.PinValueToRange(&f.LowDuration, utilities.Duration(100*time.Millisecond), utilities.Duration(100*time.Minute))
 }
 
-func (f *flasher) flashUntilContextCancelled(ctx context.Context) {
-
-	f.ensureDefaults()
-	lastSwitch := time.Now()
-	onLow := false
-	for {
-		select {
-		case <-ctx.Done():
-			f.l.SetPower(0.0)
-			return
-		default:
-			if onLow && time.Since(lastSwitch) > time.Duration(f.LowDuration) {
-				f.l.Enable()
-				onLow = false
-				lastSwitch = time.Now()
-			} else if !onLow && time.Since(lastSwitch) > time.Duration(f.HighDuration) {
-				f.l.SetPower(0.0)
-				f.l.Disable()
-				onLow = true
-				lastSwitch = time.Now()
-			}
-			time.Sleep(time.Duration(f.LowDuration))
-		}
+func (f *flasher) GetPower(t time.Duration) *float64 {
+	tn := float64(t.Nanoseconds()%(int64(f.HighDuration)+int64(f.LowDuration))) / float64(f.HighDuration)
+	if tn < 1.0 {
+		return nil
+	} else {
+		v := 0.0
+		return &v
 	}
 }
 
-func (f *flasher) Stop() {
-	if f.cancel != nil {
-		f.cancel()
-	}
+func (f *flasher) Weight() float64 {
+	return 10000000
 }
