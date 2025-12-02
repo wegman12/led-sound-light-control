@@ -59,6 +59,11 @@ func (m *Manager) Start(ctx context.Context) {
 	ctx, m.cancel = context.WithCancel(ctx)
 	m.startTime = time.Now()
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Masking panics from go-bbhw library
+			}
+		}()
 		m.SetLedPowerUntilContextCancelled(ctx)
 	}()
 }
