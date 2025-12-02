@@ -1,6 +1,6 @@
 import { Container, Typography, Box } from '@mui/material';
 import PaletteIcon from '@mui/icons-material/Palette';
-import ColorLensIcon from '@mui/icons-material/ColorLens';
+import GridViewIcon from '@mui/icons-material/GridView';
 import BehaviorCard from '../components/BehaviorCard';
 
 export default function DashboardPage() {
@@ -35,7 +35,7 @@ export default function DashboardPage() {
           <BehaviorCard
             title="Specific Colors"
             description="Choose from preset colors"
-            icon={<ColorLensIcon sx={{ fontSize: 'inherit' }} />}
+            icon={<GridViewIcon sx={{ fontSize: 'inherit' }} />}
             path="/specific-colors"
           />
         </Box>
