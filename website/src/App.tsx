@@ -1,8 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
 import { CircularProgress, Box } from '@mui/material';
 import { useHealthCheck } from './hooks/useHealthCheck';
-import DashboardPage from './pages/DashboardPage';
-import ApiErrorPage from './pages/ApiErrorPage';
+import { AppRoutes, ErrorRoutes } from './routes';
 
 function App() {
   const { isHealthy, isLoading } = useHealthCheck();
@@ -24,19 +23,7 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        {isHealthy ? (
-          <>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </>
-        ) : (
-          <>
-            <Route path="/api-error" element={<ApiErrorPage />} />
-            <Route path="*" element={<Navigate to="/api-error" replace />} />
-          </>
-        )}
-      </Routes>
+        {isHealthy ? <AppRoutes /> : <ErrorRoutes />}
     </BrowserRouter>
   );
 }
