@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppBar, Toolbar, Typography, Button, Box, Snackbar, Alert } from '@mui/material';
 import { turnLightsOn, turnLightsOff, ApiError } from '../services';
 
 export default function Header() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
@@ -41,7 +43,12 @@ export default function Header() {
     <>
       <AppBar position="static">
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography
+            variant="h6"
+            component="div"
+            onClick={() => navigate('/')}
+            sx={{ flexGrow: 1, cursor: 'pointer' }}
+          >
             LED Manager
           </Typography>
           <Box sx={{ display: 'flex', gap: 2 }}>

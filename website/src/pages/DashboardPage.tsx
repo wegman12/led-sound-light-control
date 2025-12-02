@@ -1,5 +1,6 @@
 import { Container, Typography, Box } from '@mui/material';
 import PaletteIcon from '@mui/icons-material/Palette';
+import ColorLensIcon from '@mui/icons-material/ColorLens';
 import BehaviorCard from '../components/BehaviorCard';
 
 export default function DashboardPage() {
@@ -30,6 +31,12 @@ export default function DashboardPage() {
             description="Select a static color for the LEDs"
             icon={<PaletteIcon sx={{ fontSize: 'inherit' }} />}
             path="/color-picker"
+          />
+          <BehaviorCard
+            title="Specific Colors"
+            description="Choose from preset colors"
+            icon={<ColorLensIcon sx={{ fontSize: 'inherit' }} />}
+            path="/specific-colors"
           />
         </Box>
       </Box>

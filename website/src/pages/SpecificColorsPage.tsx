@@ -3,75 +3,82 @@ import {
   Container,
   Typography,
   Box,
-  Button,
   Backdrop,
   CircularProgress,
   Snackbar,
   Alert,
 } from '@mui/material';
-import ColorPicker from '../components/ColorPicker';
+import PresetColorCard from '../components/PresetColorCard';
 import { registerBehavior, turnLightsOn, ApiError } from '../services';
 import type { ManagerConfig } from '../types/api';
-import { hsvaToRgba, type HsvaColor } from '@uiw/color-convert';
 
-export default function ColorPickerPage() {
-  const [hsva, setHsva] = useState<HsvaColor>({ h: 120, s: 100, v: 100, a: 1 });
-  const [white, setWhite] = useState(0);
+interface PresetColor {
+  name: string;
+  red: number;
+  green: number;
+  blue: number;
+  white: number;
+}
+
+const PRESET_COLORS: PresetColor[] = [
+  { name: 'Red', red: 1, green: 0, blue: 0, white: 0 },
+  { name: 'Green', red: 0, green: 1, blue: 0, white: 0 },
+  { name: 'Blue', red: 0, green: 0, blue: 1, white: 0 },
+  { name: 'Yellow', red: 1, green: 1, blue: 0, white: 0 },
+  { name: 'Cyan', red: 0, green: 1, blue: 1, white: 0 },
+  { name: 'Magenta', red: 1, green: 0, blue: 1, white: 0 },
+  { name: 'White', red: 0, green: 0, blue: 0, white: 1 },
+  { name: 'Warm White', red: 1, green: 0.7, blue: 0.3, white: 0.5 },
+  { name: 'Orange', red: 1, green: 0.5, blue: 0, white: 0 },
+  { name: 'Purple', red: 0.5, green: 0, blue: 1, white: 0 },
+  { name: 'Pink', red: 1, green: 0.4, blue: 0.7, white: 0 },
+  { name: 'Teal', red: 0, green: 0.5, blue: 0.5, white: 0 },
+];
+
+export default function SpecificColorsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
 
-  const handleLoadColor = async () => {
+  const handleColorSelect = async (color: PresetColor) => {
     setLoading(true);
     setError(null);
 
     try {
-      // Convert HSVA to RGBA
-      const rgba = hsvaToRgba(hsva);
-
-      // Convert RGB values from 0-255 to 0.0-1.0 for API
-      const redNormalized = rgba.r / 255;
-      const greenNormalized = rgba.g / 255;
-      const blueNormalized = rgba.b / 255;
-
-      // Create behavior configuration for RGBW
       const config: ManagerConfig = {
         behaviors: [
           {
             behavior_type: 'fixed',
             color: 'red',
             config: {
-              power_value: redNormalized,
+              power_value: color.red,
             },
           },
           {
             behavior_type: 'fixed',
             color: 'green',
             config: {
-              power_value: greenNormalized,
+              power_value: color.green,
             },
           },
           {
             behavior_type: 'fixed',
             color: 'blue',
             config: {
-              power_value: blueNormalized,
+              power_value: color.blue,
             },
           },
           {
             behavior_type: 'fixed',
             color: 'white',
             config: {
-              power_value: white,
+              power_value: color.white,
             },
           },
         ],
       };
 
-      // Register the behavior
       await registerBehavior(config);
-
-      // Turn on the lights
       await turnLightsOn();
     } catch (err) {
       const message =
@@ -87,17 +94,6 @@ export default function ColorPickerPage() {
     setSnackbarOpen(false);
   };
 
-  // Calculate button color based on HSVA + white
-  const rgba = hsvaToRgba(hsva);
-  const buttonRed = Math.min(rgba.r + Math.round(white * 255), 255);
-  const buttonGreen = Math.min(rgba.g + Math.round(white * 255), 255);
-  const buttonBlue = Math.min(rgba.b + Math.round(white * 255), 255);
-  const buttonColor = `rgb(${buttonRed}, ${buttonGreen}, ${buttonBlue})`;
-
-  // Calculate text color based on brightness for better contrast
-  const brightness = (buttonRed * 299 + buttonGreen * 587 + buttonBlue * 114) / 1000;
-  const textColor = brightness > 128 ? '#000000' : '#ffffff';
-
   return (
     <>
       <Container maxWidth="lg">
@@ -111,42 +107,30 @@ export default function ColorPickerPage() {
           }}
         >
           <Typography variant="h4" component="h1" gutterBottom>
-            Color Picker
+            Specific Colors
           </Typography>
 
-          <ColorPicker
-            hsva={hsva}
-            white={white}
-            onHsvaChange={setHsva}
-            onWhiteChange={setWhite}
-          />
-
-          <Button
-            variant="contained"
-            size="large"
-            onClick={handleLoadColor}
-            disabled={loading}
+          <Box
             sx={{
-              mt: 2,
-              backgroundColor: buttonColor,
-              color: textColor,
-              '&:hover': {
-                backgroundColor: buttonColor,
-                filter: 'brightness(0.9)',
-              },
-              '&.Mui-disabled': {
-                backgroundColor: buttonColor,
-                color: textColor,
-                opacity: 0.6,
-              },
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 3,
+              justifyContent: 'center',
+              maxWidth: 900,
             }}
           >
-            Load Color
-          </Button>
+            {PRESET_COLORS.map((color) => (
+              <PresetColorCard
+                key={color.name}
+                color={color}
+                onClick={() => handleColorSelect(color)}
+                disabled={loading}
+              />
+            ))}
+          </Box>
         </Box>
       </Container>
 
-      {/* Loading Overlay */}
       <Backdrop
         sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }}
         open={loading}
@@ -154,7 +138,6 @@ export default function ColorPickerPage() {
         <CircularProgress color="inherit" />
       </Backdrop>
 
-      {/* Error Snackbar */}
       <Snackbar
         open={snackbarOpen}
         autoHideDuration={6000}
