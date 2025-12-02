@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -20,15 +21,17 @@ type ServerConfig struct {
 
 // Server represents the HTTP server
 type Server struct {
-	config     ServerConfig
-	httpServer *http.Server
+	config        ServerConfig
+	httpServer    *http.Server
+	cleanupEvents *sync.WaitGroup
 }
 
 // NewServer creates a new Server instance with the given configuration
 func NewServer(config ServerConfig, ctx context.Context) *Server {
 	mux := http.NewServeMux()
 
-	RegisterRoutes(mux, ctx)
+	wg := &sync.WaitGroup{}
+	RegisterRoutes(mux, ctx, wg)
 
 	// Wrap mux with CORS middleware
 	handler := corsMiddleware(mux)
@@ -41,6 +44,7 @@ func NewServer(config ServerConfig, ctx context.Context) *Server {
 			ReadTimeout:  time.Duration(config.ReadTimeout) * time.Second,
 			WriteTimeout: time.Duration(config.WriteTimeout) * time.Second,
 		},
+		cleanupEvents: wg,
 	}
 }
 
@@ -79,6 +83,11 @@ func (s *Server) waitForContextCancellation(ctx context.Context, serverErrors ch
 		// Attempt graceful shutdown
 		if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("error during server shutdown: %w", err)
+		}
+
+		// Wait for other cleanup events to finish
+		if s.cleanupEvents != nil {
+			s.cleanupEvents.Wait()
 		}
 
 		log.Println("Server stopped gracefully")
