@@ -10,24 +10,26 @@ interface PresetColor {
 
 interface PresetColorCardProps {
   color: PresetColor;
+  brightness: number;
   onClick: () => void;
   disabled?: boolean;
 }
 
 export default function PresetColorCard({
   color,
+  brightness,
   onClick,
   disabled = false,
 }: PresetColorCardProps) {
-  // Calculate RGB display color (adding white to all channels)
-  const displayRed = Math.min(Math.round(color.red * 255 + color.white * 255), 255);
-  const displayGreen = Math.min(Math.round(color.green * 255 + color.white * 255), 255);
-  const displayBlue = Math.min(Math.round(color.blue * 255 + color.white * 255), 255);
+  // Calculate RGB display color (adding white to all channels) and apply brightness scaling
+  const displayRed = Math.min(Math.round((color.red * brightness) * 255 + (color.white * brightness) * 255), 255);
+  const displayGreen = Math.min(Math.round((color.green * brightness) * 255 + (color.white * brightness) * 255), 255);
+  const displayBlue = Math.min(Math.round((color.blue * brightness) * 255 + (color.white * brightness) * 255), 255);
   const backgroundColor = `rgb(${displayRed}, ${displayGreen}, ${displayBlue})`;
 
-  // Calculate text color based on brightness for better contrast
-  const brightness = (displayRed * 299 + displayGreen * 587 + displayBlue * 114) / 1000;
-  const textColor = brightness > 128 ? '#000000' : '#ffffff';
+  // Calculate text color based on luminance for better contrast
+  const luminance = (displayRed * 299 + displayGreen * 587 + displayBlue * 114) / 1000;
+  const textColor = luminance > 128 ? '#000000' : '#ffffff';
 
   return (
     <Card
@@ -63,7 +65,7 @@ export default function PresetColorCard({
             sx={{
               color: textColor,
               fontWeight: 'bold',
-              textShadow: brightness > 128
+              textShadow: luminance > 128
                 ? '1px 1px 2px rgba(0,0,0,0.2)'
                 : '1px 1px 2px rgba(255,255,255,0.2)',
             }}
