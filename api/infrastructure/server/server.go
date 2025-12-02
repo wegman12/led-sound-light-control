@@ -30,11 +30,14 @@ func NewServer(config ServerConfig, ctx context.Context) *Server {
 
 	RegisterRoutes(mux, ctx)
 
+	// Wrap mux with CORS middleware
+	handler := corsMiddleware(mux)
+
 	return &Server{
 		config: config,
 		httpServer: &http.Server{
 			Addr:         fmt.Sprintf("%s:%d", config.Host, config.Port),
-			Handler:      mux,
+			Handler:      handler,
 			ReadTimeout:  time.Duration(config.ReadTimeout) * time.Second,
 			WriteTimeout: time.Duration(config.WriteTimeout) * time.Second,
 		},

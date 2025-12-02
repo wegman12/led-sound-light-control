@@ -46,7 +46,9 @@ clean:
 	rm -rf dist node_modules/.tmp
 
 # Build and deploy to server
-deploy: build
+deploy:
+	@echo "Building for production with API URL: http://bbb1.wegman:8080..."
+	npm run build:production
 	@echo "Deploying to bbb1.wegman:/usr/share/nginx/html..."
 	rsync -avz --delete dist/ bbb1.wegman:/usr/share/nginx/html/
 	@echo "Deployment complete!"
