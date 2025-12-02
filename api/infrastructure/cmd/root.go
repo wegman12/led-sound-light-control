@@ -1,6 +1,3 @@
-/*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -9,6 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/wegman12/led-sound-light-control/infrastructure/server"
+	"github.com/wegman12/led-sound-light-control/light"
+	"github.com/wegman12/led-sound-light-control/sound"
 )
 
 var cfgFile string
@@ -31,8 +31,9 @@ to quickly create a Cobra application.`,
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	rootCmd.AddCommand(makeLedTester())
-	rootCmd.AddCommand(makeSoundTester())
+	rootCmd.AddCommand(light.MakeLedTesterCmd())
+	rootCmd.AddCommand(server.MakeServerCmd())
+	rootCmd.AddCommand(sound.MakeSoundTesterCmd())
 	err := rootCmd.Execute()
 	if err != nil {
 		os.Exit(1)

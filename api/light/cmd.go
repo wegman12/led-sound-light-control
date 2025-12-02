@@ -1,4 +1,4 @@
-package cmd
+package light
 
 import (
 	"encoding/json"
@@ -8,7 +8,6 @@ import (
 	"os/signal"
 
 	"github.com/spf13/cobra"
-	"github.com/wegman12/led-sound-light-control/light"
 	"github.com/wegman12/led-sound-light-control/utilities"
 )
 
@@ -18,7 +17,7 @@ type ledTesterConfig struct {
 
 var ledCfg ledTesterConfig
 
-func makeLedTester() *cobra.Command {
+func MakeLedTesterCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "test-led",
 		Short: "Test led functionality from BBB board",
@@ -39,7 +38,7 @@ func makeLedTester() *cobra.Command {
 			}
 			defer file.Close() // Ensure the file is closed
 
-			var managerConfig light.ManagerConfig
+			var managerConfig ManagerConfig
 			encoder := json.NewDecoder(file)
 			err = encoder.Decode(&managerConfig)
 			if err != nil {
@@ -49,7 +48,7 @@ func makeLedTester() *cobra.Command {
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 			defer stop() // Ensure the signal handling is stopped on exit
 
-			mgr, err := light.NewManager(managerConfig)
+			mgr, err := NewManager(managerConfig)
 			if mgr != nil {
 				defer mgr.Close()
 			}

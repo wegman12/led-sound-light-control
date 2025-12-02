@@ -1,12 +1,11 @@
 {
   "behaviors": [
     {
-      "behavior": "breathing",
-      "color": "red"
-    },
-    {
-      "behavior": "flashing",
-      "color": "red"
+      "behavior_type": "skipper",
+      "color": "white",
+      "config": {
+	      "duration": "3s"
+      }
     }
   ]
 }

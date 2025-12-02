@@ -38,3 +38,5 @@ bin/
 analysis/.ipynb_checkpoints/
 
 analysis/*.csv
+
+led-sound-light-control

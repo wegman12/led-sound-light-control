@@ -1,4 +1,4 @@
-package cmd
+package sound
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/wegman12/led-sound-light-control/sound"
 	"github.com/wegman12/led-sound-light-control/sound/processing"
 	"github.com/wegman12/led-sound-light-control/utilities"
 	"go.uber.org/zap"
@@ -30,7 +29,7 @@ type soundTesterConfig struct {
 
 var cfg soundTesterConfig
 
-func makeSoundTester() *cobra.Command {
+func MakeSoundTesterCmd() *cobra.Command {
 	soundTester := &cobra.Command{
 		Use:   "test-sound",
 		Short: "Test sound functionality from BBB board",
@@ -71,7 +70,7 @@ func doSoundTester(cmd *cobra.Command, args []string) error {
 		logger = zap.NewNop()
 	}
 
-	m, err := sound.NewManager(
+	m, err := NewManager(
 		cfg.bufferSize,
 		cfg.samplingRate,
 		cfg.targetInputRate,

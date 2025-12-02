@@ -67,6 +67,9 @@ func (m *Manager) SetLedPowerUntilContextCancelled(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			for _, l := range m.leds {
+				l.SetPower(0.0)
+			}
 			return
 		default:
 			powers := m.behaviorManager.GetPower(time.Since(m.startTime))

@@ -1,0 +1,32 @@
+{
+  "behaviors": [
+    {
+      "behavior_type": "fixed",
+      "color": "red",
+      "config": {
+        "power_value": 1.0
+      }
+    },
+    {
+      "behavior_type": "fixed",
+      "color": "blue",
+      "config": {
+        "power_value": 0.0
+      }
+    },
+    {
+      "behavior_type": "fixed",
+      "color": "green",
+      "config": {
+        "power_value": 1.0
+      }
+    },
+    {
+      "behavior_type": "fixed",
+      "color": "white",
+      "config": {
+        "power_value": 0.00
+      }
+    }
+  ]
+}
