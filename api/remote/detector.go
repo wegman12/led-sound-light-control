@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	detectorDefaultMaximumDurationWait  = 85 * time.Millisecond
-	detectorDefaultMaximumPulseDuration = 800 * time.Millisecond
+	detectorDefaultMaximumDurationWait  = 5 * time.Millisecond
+	detectorDefaultMaximumPulseDuration = 100 * time.Millisecond
 	detectDefaultDelayTime              = 500 * time.Nanosecond
 	detectorDefaultMinimumPulseLength   = 5
 )
@@ -91,7 +91,7 @@ func (d *detector) readPulsePacket(ctx context.Context) []DetectionPulse {
 	pulses := make([]DetectionPulse, 0)
 	start := time.Now()
 	timedOut := false
-	for !timedOut && time.Since(start) < d.cfg.MaximumDurationWait {
+	for !timedOut && time.Since(start) < d.cfg.MaximumPulseDuration {
 		select {
 		case <-ctx.Done():
 			return pulses
