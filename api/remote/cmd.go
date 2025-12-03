@@ -56,14 +56,14 @@ func readPulsesAndExport(ctx context.Context) error {
 	defer f.Close()
 
 	pulses := make(chan []DetectionPulse, 100)
-	d := newDetector(remoteCfg.gpioPin, pulses, DetectorConfig{
+	d := newDetector(remoteCfg.gpioPin, DetectorConfig{
 		MaximumDurationWait:  0,
 		MaximumPulseDuration: 0,
 		DelayTime:            0,
 	})
 	defer d.Close()
 
-	fmt.Println("Reading signal and writing to file")
+	fmt.Println("Reading pulse packets and writing to file")
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -72,10 +72,14 @@ func readPulsesAndExport(ctx context.Context) error {
 		totalPulsePackets := 0
 		for pulse := range pulses {
 			totalPulsePackets += 1
-			binary.Write(f, binary.LittleEndian, len(pulse))
+			pulseLength := int64(len(pulse))
+			fmt.Println(pulseLength)
+			binary.Write(f, binary.BigEndian, pulseLength)
 			for _, p := range pulse {
-				binary.Write(f, binary.LittleEndian, p.TimeHigh.Nanoseconds())
-				binary.Write(f, binary.LittleEndian, p.TimeLow.Nanoseconds())
+				high := p.TimeHigh.Microseconds()
+				low := p.TimeLow.Microseconds()
+				binary.Write(f, binary.BigEndian, high)
+				binary.Write(f, binary.BigEndian, low)
 			}
 		}
 		fmt.Println("Pulse packets written:", totalPulsePackets)
@@ -83,7 +87,7 @@ func readPulsesAndExport(ctx context.Context) error {
 		wg.Done()
 	}()
 
-	d.ReadPulsesUntilContextCancelled(ctx)
+	d.ReadPulsesUntilContextCancelled(pulses, ctx)
 
 	wg.Wait()
 	return nil

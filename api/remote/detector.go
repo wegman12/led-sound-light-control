@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/wegman12/go-bbhw"
@@ -9,15 +10,17 @@ import (
 )
 
 const (
-	detectorDefaultMaximumDurationWait  = 1 * time.Millisecond
-	detectorDefaultMaximumPulseDuration = 10 * time.Millisecond
-	detectDefaultDelayTime              = 1 * time.Microsecond
+	detectorDefaultMaximumDurationWait  = 85 * time.Millisecond
+	detectorDefaultMaximumPulseDuration = 800 * time.Millisecond
+	detectDefaultDelayTime              = 500 * time.Nanosecond
+	detectorDefaultMinimumPulseLength   = 5
 )
 
 type DetectorConfig struct {
 	MaximumDurationWait  time.Duration `json:"maximum_duration_wait"`
 	MaximumPulseDuration time.Duration `json:"maximum_pulse_duration"`
 	DelayTime            time.Duration `json:"delay_time"`
+	MinimumPulseLength   int           `json:"minimum_pulse_length"`
 }
 
 type DetectionPulse struct {
@@ -26,22 +29,24 @@ type DetectionPulse struct {
 }
 
 type detector struct {
-	pin          *bbhw.MMappedGPIO
-	cfg          DetectorConfig
-	pulseChannel chan []DetectionPulse
+	pin *bbhw.MMappedGPIO
+	cfg DetectorConfig
 }
 
-func (cfg DetectorConfig) setDefaults() {
+func (cfg *DetectorConfig) setDefaults() {
+	if cfg == nil {
+		return
+	}
 	utilities.SetValueOrDefault(&cfg.MaximumDurationWait, detectorDefaultMaximumDurationWait)
 	utilities.SetValueOrDefault(&cfg.DelayTime, detectDefaultDelayTime)
 	utilities.SetValueOrDefault(&cfg.MaximumPulseDuration, detectorDefaultMaximumPulseDuration)
+	utilities.SetValueOrDefault(&cfg.MinimumPulseLength, detectorDefaultMinimumPulseLength)
 }
 
-func newDetector(pinNumber uint, pulseChannel chan []DetectionPulse, cfg DetectorConfig) *detector {
+func newDetector(pinNumber uint, cfg DetectorConfig) *detector {
 	return &detector{
-		pin:          bbhw.NewMMappedGPIO(pinNumber, bbhw.IN),
-		cfg:          cfg,
-		pulseChannel: pulseChannel,
+		pin: bbhw.NewMMappedGPIO(pinNumber, bbhw.IN),
+		cfg: cfg,
 	}
 }
 
@@ -58,36 +63,43 @@ func (d *detector) Close() {
 	d.pin.Close()
 }
 
-func (d *detector) ReadPulsesUntilContextCancelled(ctx context.Context) {
+func (d *detector) ReadPulsesUntilContextCancelled(pulseChannel chan []DetectionPulse, ctx context.Context) {
+	d.cfg.setDefaults()
+	if pulseChannel == nil {
+		fmt.Println("pulse channel is nil")
+		return
+	}
 	for {
 		select {
 		case <-ctx.Done():
+			close(pulseChannel)
 			return
 		default:
 			if d.read() == 1 {
 				// Read a signal packet
-				packet := d.readPulsePacket()
-				if len(packet) > 0 {
-					d.pulseChannel <- packet
+				packet := d.readPulsePacket(ctx)
+				if len(packet) > d.cfg.MinimumPulseLength {
+					pulseChannel <- packet
 				}
 			}
-			time.Sleep(d.cfg.DelayTime)
-		}
-		for d.read() == 0 {
-			// wait until high
 			time.Sleep(d.cfg.DelayTime)
 		}
 	}
 }
 
-func (d *detector) readPulsePacket() []DetectionPulse {
+func (d *detector) readPulsePacket(ctx context.Context) []DetectionPulse {
 	pulses := make([]DetectionPulse, 0)
 	start := time.Now()
 	timedOut := false
 	for !timedOut && time.Since(start) < d.cfg.MaximumDurationWait {
-		var pulse DetectionPulse
-		pulse, timedOut = d.readPulse()
-		pulses = append(pulses, pulse)
+		select {
+		case <-ctx.Done():
+			return pulses
+		default:
+			var pulse DetectionPulse
+			pulse, timedOut = d.readPulse()
+			pulses = append(pulses, pulse)
+		}
 	}
 
 	return pulses
@@ -100,7 +112,7 @@ func (d *detector) readPulse() (DetectionPulse, bool) {
 	if timedOut {
 		return back, true
 	}
-	back.TimeLow, timedOut = d.readWhileValue(2)
+	back.TimeLow, timedOut = d.readWhileValue(0)
 	if timedOut {
 		return back, true
 	}
@@ -110,10 +122,10 @@ func (d *detector) readPulse() (DetectionPulse, bool) {
 func (d *detector) readWhileValue(value uint) (time.Duration, bool) {
 	start := time.Now()
 	for d.read() == value {
-		if time.Since(start) > d.cfg.DelayTime {
-			return d.cfg.DelayTime, false
+		if time.Since(start) > d.cfg.MaximumDurationWait {
+			return d.cfg.MaximumDurationWait, true
 		}
 		time.Sleep(d.cfg.DelayTime)
 	}
-	return time.Since(start), true
+	return time.Since(start), false
 }
