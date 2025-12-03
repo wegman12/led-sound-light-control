@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/wegman12/led-sound-light-control/infrastructure/server"
 	"github.com/wegman12/led-sound-light-control/light"
+	"github.com/wegman12/led-sound-light-control/remote"
 	"github.com/wegman12/led-sound-light-control/sound"
 )
 
@@ -34,6 +35,7 @@ func Execute() {
 	rootCmd.AddCommand(light.MakeLedTesterCmd())
 	rootCmd.AddCommand(server.MakeServerCmd())
 	rootCmd.AddCommand(sound.MakeSoundTesterCmd())
+	rootCmd.AddCommand(remote.MakeRemoteCmd())
 	err := rootCmd.Execute()
 	if err != nil {
 		os.Exit(1)
