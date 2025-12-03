@@ -69,13 +69,16 @@ func readPulsesAndExport(ctx context.Context) error {
 	wg.Add(1)
 
 	go func() {
+		totalPulsePackets := 0
 		for pulse := range pulses {
+			totalPulsePackets += 1
 			binary.Write(f, binary.LittleEndian, len(pulse))
 			for _, p := range pulse {
 				binary.Write(f, binary.LittleEndian, p.TimeHigh.Nanoseconds())
 				binary.Write(f, binary.LittleEndian, p.TimeLow.Nanoseconds())
 			}
 		}
+		fmt.Println("Pulse packets written:", totalPulsePackets)
 		f.Sync()
 		wg.Done()
 	}()
