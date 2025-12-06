@@ -36,14 +36,22 @@ func (h *handler) handleRegisterBehavior(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	newManager, err := NewManager(data)
-	if err != nil {
-		http.Error(w, "Error creating manager: "+err.Error(), http.StatusBadRequest)
+	// Initialize manager on first use
+	if h.manager == nil {
+		h.manager, err = NewManager(data)
+		if err != nil {
+			http.Error(w, "Error creating manager: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else {
+		// Update behaviors without recreating hardware
+		err = h.manager.UpdateBehaviors(data)
+		if err != nil {
+			http.Error(w, "Error updating behaviors: "+err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
-	if h.manager != nil {
-		h.manager.Close()
-	}
-	h.manager = newManager
+
 	h.currentBehavior = &data
 	w.WriteHeader(http.StatusAccepted)
 }

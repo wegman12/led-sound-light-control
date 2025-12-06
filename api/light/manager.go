@@ -2,6 +2,7 @@ package light
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/wegman12/go-bbhw"
@@ -16,6 +17,7 @@ type Manager struct {
 
 	startTime time.Time
 	cancel    context.CancelFunc
+	paused    atomic.Bool
 }
 
 const (
@@ -40,6 +42,17 @@ func NewManager(cfg ManagerConfig) (*Manager, error) {
 		leds:            leds,
 		behaviorManager: behavior.CreateManager(behaviors),
 	}, err
+}
+
+func (m *Manager) UpdateBehaviors(cfg ManagerConfig) error {
+	behaviors, err := createBehaviors(cfg.Behaviors)
+	if err != nil {
+		return err
+	}
+	m.paused.Store(true)
+	m.behaviorManager = behavior.CreateManager(behaviors)
+	m.paused.Store(false)
+	return nil
 }
 
 func (m *Manager) Close() {
@@ -77,6 +90,9 @@ func (m *Manager) SetLedPowerUntilContextCancelled(ctx context.Context) {
 			}
 			return
 		default:
+			if m.paused.Load() {
+				break
+			}
 			powers := m.behaviorManager.GetPower(time.Since(m.startTime))
 			for c, p := range powers {
 				if p == nil {
