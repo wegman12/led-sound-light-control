@@ -53,9 +53,9 @@ func (c *Controller) handleButtonPress(button ButtonType) {
 	// Map button presses to light events
 	switch button {
 	case PowerButtonType:
-		c.lightController.SendEvent(light.StopEvent{})
+		c.lightController.SendEvent(light.TogglePowerEvent{})
 	case PauseButtonType:
-		c.lightController.SendEvent(light.StopEvent{})
+		c.lightController.SendEvent(light.TogglePauseEvent{})
 	// TODO: Add more button mappings here
 	// For example:
 	// case RedButtonType:

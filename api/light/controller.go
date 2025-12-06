@@ -12,6 +12,8 @@ const (
 	StartEventType EventType = iota
 	StopEventType
 	ChangeBehaviorEventType
+	TogglePowerEventType
+	TogglePauseEventType
 )
 
 type LightEvent interface {
@@ -38,11 +40,24 @@ func (e ChangeBehaviorEvent) Type() EventType {
 	return ChangeBehaviorEventType
 }
 
+type TogglePowerEvent struct{}
+
+func (e TogglePowerEvent) Type() EventType {
+	return TogglePowerEventType
+}
+
+type TogglePauseEvent struct{}
+
+func (e TogglePauseEvent) Type() EventType {
+	return TogglePauseEventType
+}
+
 type Controller struct {
 	ctx          context.Context
 	manager      *Manager
 	eventChannel chan LightEvent
 	wg           *sync.WaitGroup
+	isRunning    bool
 }
 
 func NewController(ctx context.Context, wg *sync.WaitGroup) *Controller {
@@ -87,10 +102,12 @@ func (c *Controller) handleEvent(event LightEvent) error {
 	case StartEvent:
 		if c.manager != nil {
 			c.manager.Start(c.ctx)
+			c.isRunning = true
 		}
 	case StopEvent:
 		if c.manager != nil {
 			c.manager.Stop()
+			c.isRunning = false
 		}
 	case ChangeBehaviorEvent:
 		if c.manager == nil {
@@ -103,6 +120,22 @@ func (c *Controller) handleEvent(event LightEvent) error {
 			if err := c.manager.UpdateBehaviors(e.Config); err != nil {
 				return err
 			}
+		}
+	case TogglePowerEvent:
+		if c.manager != nil {
+			if c.isRunning {
+				c.manager.Stop()
+				c.isRunning = false
+			} else {
+				c.manager.Start(c.ctx)
+				c.isRunning = true
+			}
+		}
+	case TogglePauseEvent:
+		if c.manager != nil {
+			// Toggle the pause state
+			currentPause := c.manager.paused.Load()
+			c.manager.paused.Store(!currentPause)
 		}
 	}
 	return nil
