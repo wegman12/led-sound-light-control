@@ -90,7 +90,8 @@ func (m *Manager) SetLedPowerUntilContextCancelled(ctx context.Context) {
 			}
 			return
 		default:
-			if m.paused.Load() {
+			isPaused := m.paused.Load()
+			if isPaused {
 				break
 			}
 			powers := m.behaviorManager.GetPower(time.Since(m.startTime))
