@@ -2,6 +2,7 @@ package light
 
 import (
 	"context"
+	"encoding/json"
 	"sync/atomic"
 	"time"
 
@@ -120,11 +121,50 @@ func createLeds() (map[led.Color]led.Led, error) {
 }
 
 func createBehaviors(cfgs []BehaviorConfig) (map[led.Color][]behavior.Behavior, error) {
+	// Normalize config to ensure all LED colors are represented
+	normalizedCfgs := normalizeConfig(cfgs)
+
 	behaviors := make(map[led.Color][]behavior.Behavior)
 
-	for _, cfg := range cfgs {
+	for _, cfg := range normalizedCfgs {
 		behaviors[cfg.Color] = append(behaviors[cfg.Color], cfg.Behavior)
 	}
 
 	return behaviors, nil
+}
+
+// normalizeConfig ensures all LED colors are represented in the configuration
+// For any color not specified, adds a fixed behavior with 0 power
+func normalizeConfig(cfgs []BehaviorConfig) []BehaviorConfig {
+	allColors := []led.Color{led.RedLedColor, led.GreenLedColor, led.BlueLedColor, led.WhiteLedColor}
+
+	// Track which colors are already in the config
+	existingColors := make(map[led.Color]bool)
+	for _, cfg := range cfgs {
+		existingColors[cfg.Color] = true
+	}
+
+	// Start with the provided configs
+	normalized := make([]BehaviorConfig, len(cfgs))
+	copy(normalized, cfgs)
+
+	// Add zero-power behaviors for missing colors
+	for _, color := range allColors {
+		if !existingColors[color] {
+			// Create a fixed behavior with 0 power using the factory
+			configJSON := json.RawMessage(`{"power_value": 0.0}`)
+			zeroBehavior, err := behavior.CreateBehavior(behavior.FixedBehaviorType, configJSON)
+			if err != nil {
+				// If we can't create the zero behavior, skip this color
+				// This shouldn't happen but we handle it gracefully
+				continue
+			}
+			normalized = append(normalized, BehaviorConfig{
+				Color:    color,
+				Behavior: zeroBehavior,
+			})
+		}
+	}
+
+	return normalized
 }
