@@ -8,12 +8,18 @@ import (
 )
 
 type Manager struct {
-	sensorPort int
+	gpioPin uint
+}
+
+func NewManager(gpioPin uint) *Manager {
+	return &Manager{
+		gpioPin: gpioPin,
+	}
 }
 
 func (m *Manager) ReportButtonPressesUntilContextCancelled(buttonPresses chan ButtonType, ctx context.Context) {
 	pulses := make(chan []DetectionPulse, 100)
-	d := newDetector(remoteCfg.gpioPin, DetectorConfig{
+	d := newDetector(m.gpioPin, DetectorConfig{
 		MaximumDurationWait:  0,
 		MaximumPulseDuration: 0,
 		DelayTime:            0,

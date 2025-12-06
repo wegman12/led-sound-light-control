@@ -1,21 +1,18 @@
 package light
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 )
 
 type handler struct {
-	ctx             context.Context
-	manager         *Manager
-	currentBehavior *ManagerConfig
+	controller *Controller
 }
 
-func newHandler(ctx context.Context) *handler {
+func newHandler(controller *Controller) *handler {
 	return &handler{
-		ctx: ctx,
+		controller: controller,
 	}
 }
 
@@ -36,40 +33,19 @@ func (h *handler) handleRegisterBehavior(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Initialize manager on first use
-	if h.manager == nil {
-		h.manager, err = NewManager(data)
-		if err != nil {
-			http.Error(w, "Error creating manager: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-	} else {
-		// Update behaviors without recreating hardware
-		err = h.manager.UpdateBehaviors(data)
-		if err != nil {
-			http.Error(w, "Error updating behaviors: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
+	h.controller.SendEvent(ChangeBehaviorEvent{
+		Config: data,
+	})
 
-	h.currentBehavior = &data
 	w.WriteHeader(http.StatusAccepted)
 }
 
 func (h *handler) handleTurnOn(w http.ResponseWriter, r *http.Request) {
-	if h.manager == nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("you must register a behavior first"))
-		return
-	}
-	h.manager.Start(h.ctx)
+	h.controller.SendEvent(StartEvent{})
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (h *handler) handleTurnOff(w http.ResponseWriter, r *http.Request) {
-	if h.manager == nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("you must register a behavior first"))
-		return
-	}
-	h.manager.Stop()
+	h.controller.SendEvent(StopEvent{})
+	w.WriteHeader(http.StatusAccepted)
 }
