@@ -23,6 +23,24 @@ func Filter[T any](values []T, filterFunc func(T) bool) []T {
 	return back
 }
 
+func All[T any](values []T, filterFunc func(T) bool) bool {
+	for _, value := range values {
+		if !filterFunc(value) {
+			return false
+		}
+	}
+	return true
+}
+
+func Some[T any](values []T, filterFunc func(T) bool) bool {
+	for _, value := range values {
+		if filterFunc(value) {
+			return true
+		}
+	}
+	return false
+}
+
 func ApplyMap[TKey comparable, TValue, TOut any](values map[TKey]TValue, applyFunc func(TKey, TValue) TOut) map[TKey]TOut {
 	back := make(map[TKey]TOut, len(values))
 	for k, v := range values {

@@ -11,13 +11,21 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wegman12/go-bbhw"
+	"github.com/wegman12/led-sound-light-control/utilities"
+)
+
+type remoteTesterType string
+
+const (
+	rawTesterType    remoteTesterType = "raw"
+	pulseTesterType  remoteTesterType = "pulse"
+	buttonTesterType remoteTesterType = "button"
 )
 
 type remoteTesterConfig struct {
 	gpioPin    uint
 	outputFile string
-	usePulses  bool
-	detector   DetectorConfig
+	testerType string
 }
 
 var remoteCfg remoteTesterConfig
@@ -31,18 +39,22 @@ func MakeRemoteCmd() *cobra.Command {
 
 			ctx, _ := signal.NotifyContext(cmd.Context(), os.Interrupt)
 
-			if remoteCfg.usePulses {
-				return readPulsesAndExport(ctx)
-			} else {
-
+			switch remoteTesterType(remoteCfg.testerType) {
+			case rawTesterType:
 				return readRawDataAndExport(ctx)
+			case pulseTesterType:
+				return readPulsesAndExport(ctx)
+			case buttonTesterType:
+				return readButtonsAndPrint(ctx)
+			default:
+				return fmt.Errorf("unsupported tester type provided - options are: button, pulse, raw")
 			}
 		},
 	}
 
 	cmd.Flags().UintVarP(&remoteCfg.gpioPin, "pin", "p", 20, "pin that the IR sensor is using")
-	cmd.Flags().StringVarP(&remoteCfg.outputFile, "output", "o", "result.bin", "output file to write the result")
-	cmd.Flags().BoolVarP(&remoteCfg.usePulses, "use-pulses", "u", false, "use pulses instead of raw data for the read")
+	cmd.Flags().StringVarP(&remoteCfg.outputFile, "output", "o", "result.bin", "output file to write the result - only applies to pulse and raw types")
+	cmd.Flags().StringVarP(&remoteCfg.testerType, "tester-type", "t", "button", "the type of test to run - options are: button, pulse, raw")
 	return cmd
 }
 
@@ -154,6 +166,41 @@ func readRawDataAndExport(ctx context.Context) error {
 	}
 	duration := time.Since(start)
 	fmt.Printf("Finished in %s\n", duration)
+	wg.Wait()
+	return nil
+}
+
+func readButtonsAndPrint(ctx context.Context) error {
+	pulses := make(chan []DetectionPulse, 100)
+	d := newDetector(remoteCfg.gpioPin, DetectorConfig{
+		MaximumDurationWait:  0,
+		MaximumPulseDuration: 0,
+		DelayTime:            0,
+	})
+	defer d.Close()
+
+	fmt.Println("Detecting buttons and printing to screen")
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	go func() {
+		dr := newDurationReducer(time.Duration(0))
+		for pulse := range pulses {
+			code := utilities.Apply(pulse, dr.isLowDuration)
+			buttonType := matchCode(code)
+			if buttonType == nil {
+				fmt.Println("Unrecognized button")
+			} else {
+				name := ButtonNames[*buttonType]
+				fmt.Println("Found button: ", name)
+			}
+		}
+		wg.Done()
+	}()
+
+	d.ReadPulsesUntilContextCancelled(pulses, ctx)
+
 	wg.Wait()
 	return nil
 }
