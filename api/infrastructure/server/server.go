@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // ServerConfig holds the configuration for the HTTP server
@@ -24,17 +25,24 @@ type Server struct {
 	config        ServerConfig
 	httpServer    *http.Server
 	cleanupEvents *sync.WaitGroup
+	logger        *zap.Logger
 }
 
 // NewServer creates a new Server instance with the given configuration
-func NewServer(config ServerConfig, ctx context.Context) *Server {
+func NewServer(config ServerConfig, ctx context.Context, logger *zap.Logger) *Server {
 	mux := http.NewServeMux()
 
 	wg := &sync.WaitGroup{}
-	RegisterRoutes(mux, ctx, wg)
+	RegisterRoutes(mux, ctx, wg, logger)
 
 	// Wrap mux with CORS middleware
 	handler := corsMiddleware(mux)
+
+	logger.Debug("Server initialized",
+		zap.String("address", fmt.Sprintf("%s:%d", config.Host, config.Port)),
+		zap.Int("read_timeout", config.ReadTimeout),
+		zap.Int("write_timeout", config.WriteTimeout),
+	)
 
 	return &Server{
 		config: config,
@@ -45,6 +53,7 @@ func NewServer(config ServerConfig, ctx context.Context) *Server {
 			WriteTimeout: time.Duration(config.WriteTimeout) * time.Second,
 		},
 		cleanupEvents: wg,
+		logger:        logger,
 	}
 }
 
@@ -55,7 +64,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Start server in a goroutine
 	go func() {
-		log.Printf("Starting server on %s", s.httpServer.Addr)
+		s.logger.Info("Server listening", zap.String("address", s.httpServer.Addr))
 		serverErrors <- s.httpServer.ListenAndServe()
 	}()
 
@@ -68,10 +77,11 @@ func (s *Server) waitForContextCancellation(ctx context.Context, serverErrors ch
 	select {
 	case err := <-serverErrors:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Error("Server error", zap.Error(err))
 			return fmt.Errorf("server error: %w", err)
 		}
 	case <-ctx.Done():
-		log.Println("Shutdown signal received, shutting down gracefully...")
+		s.logger.Info("Shutdown signal received, shutting down gracefully")
 
 		// Create shutdown context with timeout
 		shutdownCtx, cancel := context.WithTimeout(
@@ -80,17 +90,21 @@ func (s *Server) waitForContextCancellation(ctx context.Context, serverErrors ch
 		)
 		defer cancel()
 
+		s.logger.Debug("Shutting down HTTP server", zap.Int("timeout", s.config.ShutdownTimeout))
+
 		// Attempt graceful shutdown
 		if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
+			s.logger.Error("Error during server shutdown", zap.Error(err))
 			return fmt.Errorf("error during server shutdown: %w", err)
 		}
 
 		// Wait for other cleanup events to finish
 		if s.cleanupEvents != nil {
+			s.logger.Debug("Waiting for cleanup events to complete")
 			s.cleanupEvents.Wait()
 		}
 
-		log.Println("Server stopped gracefully")
+		s.logger.Info("Server stopped gracefully")
 	}
 	return nil
 }

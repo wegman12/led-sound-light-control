@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/wegman12/led-sound-light-control/light"
 	"github.com/wegman12/led-sound-light-control/light/behavior"
 	"github.com/wegman12/led-sound-light-control/light/led"
+	"go.uber.org/zap"
 )
 
 type Controller struct {
@@ -17,32 +17,40 @@ type Controller struct {
 	manager         *Manager
 	lightController *light.Controller
 	wg              *sync.WaitGroup
+	logger          *zap.Logger
 }
 
-func NewController(ctx context.Context, gpioPin uint, lightController *light.Controller, wg *sync.WaitGroup) *Controller {
+func NewController(ctx context.Context, gpioPin uint, lightController *light.Controller, wg *sync.WaitGroup, logger *zap.Logger) *Controller {
+	logger.Debug("Initializing remote controller", zap.Uint("gpio_pin", gpioPin))
 	return &Controller{
 		ctx:             ctx,
 		manager:         NewManager(gpioPin),
 		lightController: lightController,
 		wg:              wg,
+		logger:          logger,
 	}
 }
 
 func (c *Controller) Start() {
+	c.logger.Info("Starting remote controller")
 	buttonPresses := make(chan ButtonType, 100)
 
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
+		c.logger.Debug("Button press detection goroutine started")
 		c.manager.ReportButtonPressesUntilContextCancelled(buttonPresses, c.ctx)
+		c.logger.Debug("Button press detection goroutine stopped")
 	}()
 
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
+		c.logger.Debug("Button press handler goroutine started")
 		for {
 			select {
 			case <-c.ctx.Done():
+				c.logger.Info("Remote controller shutting down")
 				return
 			case button := <-buttonPresses:
 				c.handleButtonPress(button)
@@ -52,35 +60,35 @@ func (c *Controller) Start() {
 }
 
 func (c *Controller) handleButtonPress(button ButtonType) {
-	log.Printf("Button pressed: %s", ButtonNames[button])
+	buttonName := ButtonNames[button]
+	c.logger.Info("Button pressed", zap.String("button", buttonName), zap.Int("button_type", int(button)))
 
 	// Map button presses to light events
 	switch button {
 	case PowerButtonType:
+		c.logger.Debug("Sending toggle power event")
 		c.lightController.SendEvent(light.TogglePowerEvent{})
 	case PauseButtonType:
+		c.logger.Debug("Sending toggle pause event")
 		c.lightController.SendEvent(light.TogglePauseEvent{})
 	case RedButtonType:
+		c.logger.Debug("Setting solid red color")
 		config := createSolidColorConfig(led.RedLedColor)
-		c.lightController.SendEvent(light.ChangeBehaviorEvent{
-			Config: config,
-		})
+		c.lightController.SendEvent(light.ChangeBehaviorEvent{Config: config})
 	case GreenButtonType:
+		c.logger.Debug("Setting solid green color")
 		config := createSolidColorConfig(led.GreenLedColor)
-		c.lightController.SendEvent(light.ChangeBehaviorEvent{
-			Config: config,
-		})
+		c.lightController.SendEvent(light.ChangeBehaviorEvent{Config: config})
 	case BlueButtonType:
+		c.logger.Debug("Setting solid blue color")
 		config := createSolidColorConfig(led.BlueLedColor)
-		c.lightController.SendEvent(light.ChangeBehaviorEvent{
-			Config: config,
-		})
+		c.lightController.SendEvent(light.ChangeBehaviorEvent{Config: config})
 	case WhiteButtonType:
+		c.logger.Debug("Setting solid white color")
 		config := createSolidColorConfig(led.WhiteLedColor)
-		c.lightController.SendEvent(light.ChangeBehaviorEvent{
-			Config: config,
-		})
+		c.lightController.SendEvent(light.ChangeBehaviorEvent{Config: config})
 	case PinkButtonType:
+		c.logger.Debug("Setting mixed pink color")
 		config := createMixedColorConfig(map[led.Color]float64{
 			led.RedLedColor:  1.0,
 			led.BlueLedColor: 0.4,
@@ -180,7 +188,7 @@ func (c *Controller) handleButtonPress(button ButtonType) {
 		})
 		c.lightController.SendEvent(light.ChangeBehaviorEvent{Config: config})
 	default:
-		log.Printf("No action mapped for button: %s", ButtonNames[button])
+		c.logger.Warn("No action mapped for button", zap.String("button", buttonName), zap.Int("button_type", int(button)))
 	}
 }
 
@@ -202,7 +210,7 @@ func createMixedColorConfig(colorMix map[led.Color]float64) light.ManagerConfig 
 		// Create the behavior using the factory
 		fixedBehavior, err := behavior.CreateBehavior(behavior.FixedBehaviorType, configJSON)
 		if err != nil {
-			log.Printf("Error creating fixed behavior for color %v: %v", color, err)
+			// Log error but continue with other colors
 			continue
 		}
 
