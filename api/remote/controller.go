@@ -2,10 +2,13 @@ package remote
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"sync"
 
 	"github.com/wegman12/led-sound-light-control/light"
+	"github.com/wegman12/led-sound-light-control/light/behavior"
+	"github.com/wegman12/led-sound-light-control/light/led"
 )
 
 type Controller struct {
@@ -56,14 +59,49 @@ func (c *Controller) handleButtonPress(button ButtonType) {
 		c.lightController.SendEvent(light.TogglePowerEvent{})
 	case PauseButtonType:
 		c.lightController.SendEvent(light.TogglePauseEvent{})
-	// TODO: Add more button mappings here
-	// For example:
-	// case RedButtonType:
-	//     config := createFixedColorConfig(led.RedLedColor, 1.0)
-	//     c.lightController.SendEvent(light.ChangeBehaviorEvent{
-	//         Config: config,
-	//     })
+	case RedButtonType:
+		config := createSolidColorConfig(led.RedLedColor)
+		c.lightController.SendEvent(light.ChangeBehaviorEvent{
+			Config: config,
+		})
+	case GreenButtonType:
+		config := createSolidColorConfig(led.GreenLedColor)
+		c.lightController.SendEvent(light.ChangeBehaviorEvent{
+			Config: config,
+		})
+	case BlueButtonType:
+		config := createSolidColorConfig(led.BlueLedColor)
+		c.lightController.SendEvent(light.ChangeBehaviorEvent{
+			Config: config,
+		})
+	case WhiteButtonType:
+		config := createSolidColorConfig(led.WhiteLedColor)
+		c.lightController.SendEvent(light.ChangeBehaviorEvent{
+			Config: config,
+		})
 	default:
 		log.Printf("No action mapped for button: %s", ButtonNames[button])
+	}
+}
+
+// createSolidColorConfig creates a ManagerConfig for a solid color at full brightness
+func createSolidColorConfig(color led.Color) light.ManagerConfig {
+	// Create the JSON config for a fixed behavior at full power
+	configJSON := json.RawMessage(`{"power_value": 1.0}`)
+
+	// Create the behavior using the factory
+	fixedBehavior, err := behavior.CreateBehavior(behavior.FixedBehaviorType, configJSON)
+	if err != nil {
+		log.Printf("Error creating fixed behavior: %v", err)
+		return light.ManagerConfig{}
+	}
+
+	return light.ManagerConfig{
+		Behaviors: []light.BehaviorConfig{
+			{
+				Color:    color,
+				Behavior: fixedBehavior,
+			},
+		},
 	}
 }
