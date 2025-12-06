@@ -2,8 +2,12 @@ package light
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"sync"
 
+	"github.com/wegman12/led-sound-light-control/light/behavior"
+	"github.com/wegman12/led-sound-light-control/light/led"
 	"go.uber.org/zap"
 )
 
@@ -131,7 +135,17 @@ func (c *Controller) handleEvent(event LightEvent) error {
 			c.manager.Start(c.ctx)
 			c.isRunning = true
 		} else {
-			c.logger.Warn("Cannot start lights: no manager configured")
+			c.logger.Info("No behavior configured, creating default red behavior")
+			defaultConfig := createDefaultConfig()
+			var err error
+			c.manager, err = NewManager(defaultConfig)
+			if err != nil {
+				c.logger.Error("Failed to create default manager", zap.Error(err))
+				return err
+			}
+			c.logger.Info("Starting lights with default behavior")
+			c.manager.Start(c.ctx)
+			c.isRunning = true
 		}
 	case StopEvent:
 		if c.manager != nil {
@@ -170,7 +184,17 @@ func (c *Controller) handleEvent(event LightEvent) error {
 				c.isRunning = true
 			}
 		} else {
-			c.logger.Warn("Cannot toggle power: no manager configured")
+			c.logger.Info("No behavior configured, creating default red behavior and turning on")
+			defaultConfig := createDefaultConfig()
+			var err error
+			c.manager, err = NewManager(defaultConfig)
+			if err != nil {
+				c.logger.Error("Failed to create default manager", zap.Error(err))
+				return err
+			}
+			c.logger.Info("Starting lights with default behavior")
+			c.manager.Start(c.ctx)
+			c.isRunning = true
 		}
 	case TogglePauseEvent:
 		if c.manager != nil {
@@ -191,4 +215,39 @@ func (c *Controller) SendEvent(event LightEvent) {
 	case <-c.ctx.Done():
 		// Context cancelled, don't block
 	}
+}
+
+// createDefaultConfig creates a default configuration with Red LED at full power
+func createDefaultConfig() ManagerConfig {
+	return ManagerConfig{
+		Behaviors: []BehaviorConfig{
+			{
+				Color:    led.RedLedColor,
+				Behavior: mustCreateFixedBehavior(1.0),
+			},
+		},
+	}
+}
+
+// mustCreateFixedBehavior creates a fixed behavior with the given power value
+// Panics if creation fails, which should never happen with valid power values
+func mustCreateFixedBehavior(power float64) behavior.Behavior {
+	configJSON := json.RawMessage([]byte(`{"power_value": ` + floatToString(power) + `}`))
+	fixedBehavior, err := behavior.CreateBehavior(behavior.FixedBehaviorType, configJSON)
+	if err != nil {
+		panic("failed to create fixed behavior: " + err.Error())
+	}
+	return fixedBehavior
+}
+
+// floatToString converts a float64 to a string for JSON
+func floatToString(f float64) string {
+	if f >= 1.0 {
+		return "1.0"
+	}
+	if f <= 0.0 {
+		return "0.0"
+	}
+	// For values between 0 and 1, format with 2 decimal places
+	return fmt.Sprintf("%.2f", f)
 }
