@@ -1,3 +1,7 @@
+###
+POST http://bbb2.wegman:8080/api/lights/behavior/register
+Content-Type: application/json
+
 {
   "behaviors": [
     {
@@ -30,3 +34,6 @@
     }
   ]
 }
+
+###
+POST http://bbb2.wegman:8080/api/lights/on
