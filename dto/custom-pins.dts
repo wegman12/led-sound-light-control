@@ -1,0 +1,89 @@
+/dts-v1/;
+  /plugin/;
+
+  / {
+      compatible = "ti,beaglebone", "ti,beaglebone-black";
+
+      /* Identification */
+      part-number = "custom-pins";
+      version = "00A0";
+
+      /* State the resources this cape uses */
+      exclusive-use =
+          /* PWM pins */
+          "P9.14", "ehrpwm1A",
+          "P9.16", "ehrpwm1B",
+          "P8.13", "ehrpwm2B",
+          "P8.19", "ehrpwm2A",
+          /* GPIO pin */
+          "P9.41", "gpio0_20";
+
+      fragment@0 {
+          target = <&am33xx_pinmux>;
+          __overlay__ {
+              custom_pins: pinmux_custom_pins {
+                  pinctrl-single,pins = <
+                      /* P9_14: ehrpwm1A - MODE 6 */
+                      0x048 0x06  /* gpmc_a2.ehrpwm1A */
+
+                      /* P9_16: ehrpwm1B - MODE 6 */
+                      0x04C 0x06  /* gpmc_a3.ehrpwm1B */
+
+                      /* P8_13: ehrpwm2B - MODE 4 */
+                      0x024 0x04  /* gpmc_ad9.ehrpwm2B */
+
+                      /* P8_19: ehrpwm2A - MODE 4 */
+                      0x020 0x04  /* gpmc_ad8.ehrpwm2A */
+
+                      /* P9_41: GPIO0_20 input with pullup - MODE 7 */
+                      0x1B4 0x37  /* xdma_event_intr1.gpio0_20, INPUT | PULLUP | MODE7 */
+                  >;
+              };
+          };
+      };
+
+      fragment@1 {
+          target = <&epwmss1>;
+          __overlay__ {
+              status = "okay";
+          };
+      };
+
+      fragment@2 {
+          target = <&ehrpwm1>;
+          __overlay__ {
+              pinctrl-names = "default";
+              pinctrl-0 = <&custom_pins>;
+              status = "okay";
+          };
+      };
+
+      fragment@3 {
+          target = <&epwmss2>;
+          __overlay__ {
+              status = "okay";
+          };
+      };
+
+      fragment@4 {
+          target = <&ehrpwm2>;
+          __overlay__ {
+              pinctrl-names = "default";
+              pinctrl-0 = <&custom_pins>;
+              status = "okay";
+          };
+      };
+
+      fragment@5 {
+          target = <&ocp>;
+          __overlay__ {
+              custom_pins_helper {
+                  compatible = "bone-pinmux-helper";
+                  pinctrl-names = "default";
+                  pinctrl-0 = <&custom_pins>;
+                  status = "okay";
+              };
+          };
+      };
+  };
+
