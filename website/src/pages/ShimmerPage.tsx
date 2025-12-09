@@ -13,7 +13,7 @@ import {
 } from '@mui/material';
 import ColorPicker from '../components/ColorPicker';
 import { registerBehavior, turnLightsOn, ApiError } from '../services';
-import type { ManagerConfig } from '../types/api';
+import type {BehaviorConfig, ManagerConfig} from '../types/api';
 import { hsvaToRgba, type HsvaColor } from '@uiw/color-convert';
 
 export default function ShimmerPage() {
@@ -40,45 +40,53 @@ export default function ShimmerPage() {
       const durationStr = `${duration}ms`;
 
       // Create breathing behavior configuration for RGBW
+      const behaviors: BehaviorConfig[] = []
+      if (redNormalized > 0.0) {
+        behaviors.push({
+          behavior_type: "breathing",
+          color: "red",
+          config: {
+            duration: durationStr,
+            min_power_value: 0.0,
+            max_power_value: redNormalized,
+          }
+        })
+      }
+      if (blueNormalized > 0.0) {
+        behaviors.push({
+          behavior_type: "breathing",
+          color: "blue",
+          config: {
+            duration: durationStr,
+            min_power_value: 0.0,
+            max_power_value: blueNormalized,
+          }
+        })
+      }
+      if (greenNormalized > 0.0) {
+        behaviors.push({
+          behavior_type: "breathing",
+          color: "green",
+          config: {
+            duration: durationStr,
+            min_power_value: 0.0,
+            max_power_value: greenNormalized,
+          }
+        })
+      }
+      if (white > 0.0) {
+        behaviors.push({
+          behavior_type: "breathing",
+          color: "white",
+          config: {
+            duration: durationStr,
+            min_power_value: 0.0,
+            max_power_value: white,
+          }
+        })
+      }
       const config: ManagerConfig = {
-        behaviors: [
-          {
-            behavior_type: 'breathing',
-            color: 'red',
-            config: {
-              duration: durationStr,
-              min_power_value: 0.0,
-              max_power_value: redNormalized,
-            },
-          },
-          {
-            behavior_type: 'breathing',
-            color: 'green',
-            config: {
-              duration: durationStr,
-              min_power_value: 0.0,
-              max_power_value: greenNormalized,
-            },
-          },
-          {
-            behavior_type: 'breathing',
-            color: 'blue',
-            config: {
-              duration: durationStr,
-              min_power_value: 0.0,
-              max_power_value: blueNormalized,
-            },
-          },
-          {
-            behavior_type: 'breathing',
-            color: 'white',
-            config: {
-              duration: durationStr,
-              min_power_value: 0.0,
-              max_power_value: white,
-            },
-          },
-        ],
+        behaviors: behaviors,
       };
 
       // Register the behavior

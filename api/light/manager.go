@@ -22,7 +22,7 @@ type Manager struct {
 }
 
 const (
-	defaultNextCycleDelay = 10 * time.Millisecond
+	defaultNextCycleDelay = 800 * time.Microsecond
 )
 
 func NewManager(cfg ManagerConfig) (*Manager, error) {
