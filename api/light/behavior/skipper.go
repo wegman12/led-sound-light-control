@@ -14,7 +14,7 @@ const (
 )
 
 type skipper struct {
-	Duration      utilities.Duration `json:"duration"`
+	Duration      utilities.Duration `json:"Duration"`
 	MaxPowerValue float64            `json:"max_power_value"`
 	MinPowerValue float64            `json:"min_power_value"`
 }

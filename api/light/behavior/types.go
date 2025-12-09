@@ -14,6 +14,7 @@ const (
 	FlashingBehaviorType
 	FixedBehaviorType
 	SkipperBehaviorType
+	JoinerBehaviorType
 )
 
 func LookupBehavior(behaviorName string) Type {
@@ -26,6 +27,8 @@ func LookupBehavior(behaviorName string) Type {
 		return FixedBehaviorType
 	case "skipper":
 		return SkipperBehaviorType
+	case "joiner":
+		return JoinerBehaviorType
 	default:
 		return BreathingBehaviorType
 	}
@@ -50,7 +53,9 @@ func CreateBehavior(t Type, cfg json.RawMessage) (Behavior, error) {
 		return newFixer(cfg)
 	case SkipperBehaviorType:
 		return newSkipper(cfg)
+	case JoinerBehaviorType:
+		return newJoiner(cfg)
 	default:
-		return nil, fmt.Errorf("unknown behavior type %d", t)
+		return nil, fmt.Errorf("unknown ActiveBehavior type %d", t)
 	}
 }
