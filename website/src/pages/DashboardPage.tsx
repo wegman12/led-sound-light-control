@@ -1,6 +1,9 @@
 import { Container, Typography, Box } from '@mui/material';
 import PaletteIcon from '@mui/icons-material/Palette';
 import GridViewIcon from '@mui/icons-material/GridView';
+import BoltIcon from '@mui/icons-material/Bolt';
+import GradientIcon from '@mui/icons-material/Gradient';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import BehaviorCard from '../components/BehaviorCard';
 
 export default function DashboardPage() {
@@ -37,6 +40,24 @@ export default function DashboardPage() {
             description="Choose from preset colors"
             icon={<GridViewIcon sx={{ fontSize: 'inherit' }} />}
             path="/specific-colors"
+          />
+          <BehaviorCard
+            title="Flash"
+            description="Alternate between RGB color combinations"
+            icon={<BoltIcon sx={{ fontSize: 'inherit' }} />}
+            path="/flash"
+          />
+          <BehaviorCard
+            title="Fade"
+            description="Smoothly fade between colors"
+            icon={<GradientIcon sx={{ fontSize: 'inherit' }} />}
+            path="/fade"
+          />
+          <BehaviorCard
+            title="Shimmer"
+            description="Breathing effect with custom colors"
+            icon={<AutoAwesomeIcon sx={{ fontSize: 'inherit' }} />}
+            path="/shimmer"
           />
         </Box>
       </Box>

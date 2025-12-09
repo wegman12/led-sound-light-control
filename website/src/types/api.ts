@@ -1,6 +1,6 @@
 export type Color = 'red' | 'green' | 'blue' | 'white';
 
-export type BehaviorType = 'breathing' | 'flashing' | 'fixed' | 'skipper';
+export type BehaviorType = 'breathing' | 'flashing' | 'fixed' | 'skipper' | 'joiner';
 
 export interface FixedConfig {
   power_value: number;
@@ -24,11 +24,22 @@ export interface SkipperConfig {
   min_power_value?: number;
 }
 
+export interface JoinedBehaviorItem {
+  behavior_type: BehaviorType;
+  duration: string;
+  behavior: BehaviorConfigData;
+}
+
+export interface JoinerConfig {
+  behaviors: JoinedBehaviorItem[];
+}
+
 export type BehaviorConfigData =
   | FixedConfig
   | BreathingConfig
   | FlashingConfig
-  | SkipperConfig;
+  | SkipperConfig
+  | JoinerConfig;
 
 export interface BehaviorConfig {
   behavior_type: BehaviorType;

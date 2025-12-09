@@ -18,7 +18,7 @@ func (m *JoinedBehavior) UnmarshalJSON(data []byte) error {
 	// Anonymous struct to unmarshal known fields and the raw shape data
 	var temp struct {
 		BehaviorType   string             `json:"behavior_type"`
-		Duration       utilities.Duration `json:"color"`
+		Duration       utilities.Duration `json:"duration"`
 		ActiveBehavior json.RawMessage    `json:"behavior"`
 	}
 	if err := json.Unmarshal(data, &temp); err != nil {
