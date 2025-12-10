@@ -7,7 +7,7 @@ DEPLOY_HOST := bbb1.wegman
 KERNEL_VERSION := $(shell ssh $(DEPLOY_HOST) "uname -r" 2>/dev/null || echo "5.10.168-ti-r83")
 OVERLAY_PATH := /boot/dtbs/$(KERNEL_VERSION)/overlays/
 
-.PHONY: all build deploy clean help
+.PHONY: all build deploy deploy-uenv clean help
 
 all: build
 
@@ -38,6 +38,24 @@ deploy:
 	@echo "After reboot, verify the overlay loaded:"
 	@echo "  ssh $(DEPLOY_HOST) 'dmesg | grep custom-pins'"
 
+# Deploy uEnv.txt to BeagleBone (USE WITH CAUTION)
+deploy-uenv:
+	@echo "WARNING: This will replace /boot/uEnv.txt on $(DEPLOY_HOST)"
+	@echo "Make sure you have reviewed the changes in uEnv.txt"
+	@echo ""
+	@echo "Backing up current uEnv.txt..."
+	@ssh $(DEPLOY_HOST) "sudo cp /boot/uEnv.txt /boot/uEnv.txt.backup.$$(date +%Y%m%d_%H%M%S)"
+	@echo "Deploying uEnv.txt..."
+	@scp uEnv.txt $(DEPLOY_HOST):~/
+	@ssh $(DEPLOY_HOST) "sudo cp ~/uEnv.txt /boot/uEnv.txt"
+	@echo ""
+	@echo "uEnv.txt deployed successfully!"
+	@echo ""
+	@echo "IMPORTANT: You must REBOOT the BeagleBone for changes to take effect:"
+	@echo "  ssh $(DEPLOY_HOST) 'sudo reboot'"
+	@echo ""
+	@echo "Backup saved at: /boot/uEnv.txt.backup.<timestamp>"
+
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
@@ -47,7 +65,8 @@ clean:
 # Help target
 help:
 	@echo "Available targets:"
-	@echo "  make build  - Compile the device tree overlay"
-	@echo "  make deploy - Build and deploy to BeagleBone (requires reboot)"
-	@echo "  make clean  - Remove build artifacts"
-	@echo "  make help   - Show this help message"
+	@echo "  make build       - Compile the device tree overlay"
+	@echo "  make deploy      - Build and deploy overlay to BeagleBone (requires reboot)"
+	@echo "  make deploy-uenv - Deploy uEnv.txt to BeagleBone (USE WITH CAUTION, requires reboot)"
+	@echo "  make clean       - Remove build artifacts"
+	@echo "  make help        - Show this help message"
