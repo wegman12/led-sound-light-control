@@ -110,12 +110,13 @@ struct gpio_raw_data {
     volatile uint8_t samples[MAX_GPIO_SAMPLES];  /* Each byte is a GPIO reading (0 or 1) */
 };
 
-/* Debug structure for captured IR bits - at offset 0x3000 */
-#define DEBUG_BITS_OFFSET 0x00003000
+/* Debug structure for captured IR bits - at offset 0x1100 (after control block) */
+#define DEBUG_BITS_OFFSET 0x00001100
 struct debug_bits_data {
     volatile uint32_t valid;          /* 1 if data is valid, 0 otherwise */
     volatile uint32_t error_code;     /* Error code if decoding failed */
     volatile uint8_t bits[33];        /* The 33 bits that were captured */
+    volatile uint32_t durations[33];  /* LOW pulse durations in cycles for each bit */
 };
 
 /* GPIO Access */
@@ -262,6 +263,31 @@ static uint32_t wait_for_state(uint32_t target_state, uint32_t max_cycles, int *
     return get_cycles() - start;
 }
 
+/* Measure how long GPIO STAYS in current state (matches Go readWhileValue behavior) */
+/* Assumes GPIO is currently in current_state, measures until it changes */
+static uint32_t measure_state_duration(uint32_t current_state, uint32_t max_cycles, int *timed_out) {
+    uint32_t start = get_cycles();  /* Start timer immediately */
+    uint32_t elapsed;
+
+    /* Critical: Delay before first read to allow signal to stabilize after transition */
+    /* Without this, we get metastability issues reading too soon after state change */
+    /* Timer already started, so this delay is included in the measurement (correct) */
+    __delay_cycles(160);
+
+    while (read_gpio20() == current_state) {  /* Loop WHILE in current state */
+        elapsed = get_cycles() - start;
+        if (elapsed > max_cycles) {
+            *timed_out = 1;
+            return elapsed;
+        }
+        /* 800ns delay between reads */
+        __delay_cycles(160);
+    }
+
+    *timed_out = 0;
+    return get_cycles() - start;
+}
+
 /* Decode bit based on low duration */
 static int decode_bit(uint32_t low_cycles) {
     return (low_cycles >= THRESHOLD_1MS) ? 1 : 0;
@@ -292,12 +318,19 @@ static int read_ir_packet(void) {
     uint8_t bits[IR_PACKET_LENGTH];
     int i;
     int timed_out;
-    uint32_t space_cycles;
     uint32_t packet_start = get_cycles();
 
-    /* Clear debug data at start */
-    debug->valid = 0;
-    debug->error_code = 0;
+    /* Only clear debug data if not already valid (don't overwrite captured data) */
+    if (debug->valid == 0) {
+        debug->error_code = 0;
+        /* Initialize bits array to known pattern for debugging */
+        for (i = 0; i < IR_PACKET_LENGTH; i++) {
+            debug->bits[i] = 255;  /* Fill with 0xFF to detect if it gets overwritten */
+        }
+    } else {
+        /* Already have captured data, skip this packet */
+        return -1;
+    }
 
     /* GPIO is already LOW when this function is called (detected in main loop) */
     /* NEC protocol: 9ms LOW leader + 4.5ms HIGH space + data bits */
@@ -320,6 +353,8 @@ static int read_ir_packet(void) {
     /* GPIO is now LOW - we've skipped measuring the leader HIGH space */
     /* That leader HIGH space IS the START bit (always long = 1) */
     bits[0] = 1;  /* START bit - we use it for synchronization but don't measure it */
+    uint32_t durations[IR_PACKET_LENGTH];
+    durations[0] = 0;  /* No duration measured for START bit */
 
     /* Wait for this first LOW pulse to complete, positioning us for the loop */
     wait_for_state(1, MAX_BIT_WAIT, &timed_out);
@@ -338,31 +373,41 @@ static int read_ir_packet(void) {
             return -1;
         }
 
-        /* Wait for GPIO LOW (end of HIGH/space period) - measure HIGH duration */
-        space_cycles = wait_for_state(0, MAX_BIT_WAIT, &timed_out);
+        /* Wait for GPIO to go LOW (end of HIGH space period) */
+        wait_for_state(0, MAX_BIT_WAIT, &timed_out);
         if (timed_out) {
-
             ctrl->event_count = 0xFFFC;
             ctrl->overrun_count = i;
             return -1;
         }
 
-        /* Wait for GPIO HIGH (end of LOW/mark period) - don't measure this */
-        wait_for_state(1, MAX_BIT_WAIT, &timed_out);
+        /* Measure how long GPIO STAYS LOW (the mark/pulse duration) */
+        uint32_t low_cycles = measure_state_duration(0, MAX_BIT_WAIT, &timed_out);
         if (timed_out) {
             ctrl->event_count = 0xFFFB;
             ctrl->overrun_count = i;
             return -1;
         }
 
-        /* Decode based on HIGH duration (space) */
-        bits[i] = decode_bit(space_cycles);
+        /* Store duration for debugging */
+        durations[i] = low_cycles;
+
+        /* Decode based on LOW duration (mark) - matches Go code behavior */
+        bits[i] = decode_bit(low_cycles);
     }
 
-    /* Copy bits to debug structure for inspection */
+    /* Copy bits and durations to debug structure for inspection */
     for (i = 0; i < IR_PACKET_LENGTH; i++) {
         debug->bits[i] = bits[i];
+        debug->durations[i] = durations[i];
     }
+
+    /* Test pattern to verify struct alignment - write known values */
+    debug->durations[0] = 0x11111111;  /* 286331153 */
+    debug->durations[1] = 0x22222222;  /* 572662306 */
+    debug->durations[2] = 0x33333333;  /* 858993459 */
+    debug->durations[3] = 0x44444444;  /* 1145324612 */
+
     debug->valid = 1;
 
     /* Validate protocol structure */
@@ -452,6 +497,8 @@ static void run_ir_detection_loop(void) {
 /* Main function - IR Button Detection */
 void main(void) {
     struct control_block *ctrl = (struct control_block *)(PRU_SHARED_MEM + CONTROL_BLOCK);
+    struct debug_bits_data *debug = (struct debug_bits_data *)(PRU_SHARED_MEM + DEBUG_BITS_OFFSET);
+    int i;
 
     /* Enable OCP master port - allows PRU to access peripheral registers like GPIO */
     CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
@@ -463,6 +510,14 @@ void main(void) {
     ctrl->error_count = 0;
     ctrl->overrun_count = 0;
     ctrl->status = 1;  /* Running */
+
+    /* Initialize debug structure - clear any stale data */
+    debug->valid = 0;
+    debug->error_code = 0;
+    for (i = 0; i < IR_PACKET_LENGTH; i++) {
+        debug->bits[i] = 0;
+        debug->durations[i] = 0;
+    }
 
     /* Run the IR detection loop (never returns) */
     run_ir_detection_loop();
