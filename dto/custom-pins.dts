@@ -3,29 +3,24 @@
 
 / {
     fragment@0 {
-        target = <&am33xx_pinmux>;
+        target-path = "/chosen";
         __overlay__ {
-            custom_pins: pinmux_custom_pins {
-                pinctrl-single,pins = <
-                    /* P9_41: GPIO0_20 input with pullup for IR receiver - MODE 7 */
-                    0x1B4 0x37  /* xdma_event_intr1.gpio0_20, INPUT | PULLUP | MODE7 */
-
-                    /* P9_40: AIN1 - Analog input, no pull */
-                    0x1B8 0x27  /* xdma_event_intr2.gpio0_21, INPUT | MODE7 for ADC */
-                >;
+            overlays {
+                custom-pins = "custom-pins overlay";
             };
         };
     };
 
     fragment@1 {
-        target = <&ocp>;
+        target = <&am33xx_pinmux>;
         __overlay__ {
-            custom_pins_helper {
-                compatible = "bone-pinmux-helper";
-                pinctrl-names = "default";
-                pinctrl-0 = <&custom_pins>;
-                status = "okay";
-            };
+            pinctrl-single,pins = <
+                /* P9_41: GPIO0_20 input with pullup for IR receiver - MODE 7 */
+                0x1B4 0x37  /* xdma_event_intr1.gpio0_20, INPUT | PULLUP | MODE7 */
+
+                /* P9_40: AIN1 - Analog input, no pull */
+                0x1B8 0x27  /* xdma_event_intr2.gpio0_21, INPUT | MODE7 for ADC */
+            >;
         };
     };
 };
