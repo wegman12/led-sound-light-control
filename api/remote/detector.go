@@ -12,7 +12,7 @@ import (
 const (
 	detectorDefaultMaximumDurationWait  = 5 * time.Millisecond
 	detectorDefaultMaximumPulseDuration = 100 * time.Millisecond
-	detectDefaultDelayTime              = 500 * time.Nanosecond
+	detectDefaultDelayTime              = 1 * time.Microsecond
 	detectorDefaultMinimumPulseLength   = 5
 )
 

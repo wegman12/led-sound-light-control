@@ -39,8 +39,8 @@ func (b *breather) ensureDefaults() {
 	utilities.SetValueOrDefault(&b.MinPowerValue, breatherDefaultMinPower)
 
 	utilities.PinValueToRange(&b.Duration, utilities.Duration(100*time.Millisecond), utilities.Duration(100*time.Minute))
-	utilities.PinValueToRange(&b.MaxPowerValue, 0.55, 1.0)
-	utilities.PinValueToRange(&b.MinPowerValue, 0.0, 0.45)
+	utilities.PinValueToRange(&b.MaxPowerValue, 0.0, 1.0)
+	utilities.PinValueToRange(&b.MinPowerValue, 0.0, b.MaxPowerValue)
 }
 
 func (b *breather) GetPower(t time.Duration) *float64 {
