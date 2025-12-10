@@ -15,8 +15,8 @@
         target = <&am33xx_pinmux>;
         __overlay__ {
             pinctrl-single,pins = <
-                /* P9_41: GPIO0_20 input with pullup for IR receiver - MODE 7 */
-                0x1B4 0x37  /* xdma_event_intr1.gpio0_20, INPUT | PULLUP | MODE7 */
+                /* P9_31: PRU0 input bit 0 for IR receiver - MODE 5 (PRU) */
+                0x190 0x36  /* mcasp0_aclkx.pr1_pru0_pru_r31_0, INPUT | PULLUP | MODE6 */
 
                 /* P9_40: AIN1 - Analog input, no pull */
                 0x1B8 0x27  /* xdma_event_intr2.gpio0_21, INPUT | MODE7 for ADC */
