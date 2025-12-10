@@ -9,14 +9,16 @@ import (
 
 const (
 	pruSharedMemAddr  = 0x4A310000
-	pruSharedMemSize  = 0x4000 // 16KB to include debug bits at 0x3000
-	debugBitsOffset   = 0x3000
+	pruSharedMemSize  = 0x3000 // 12KB - BeagleBone PRU shared memory size
+	debugBitsOffset   = 0x1100 // After control block at 0x1000
 )
 
 type debugBitsData struct {
 	Valid     uint32
 	ErrorCode uint32
 	Bits      [33]uint8
+	_         [4]uint8   // Padding - need 4 bytes not 3 to match C compiler layout
+	Durations [33]uint32 // LOW pulse durations in cycles
 }
 
 func main() {
@@ -62,10 +64,14 @@ func main() {
 	fmt.Printf("Error Code: 0x%04X (%d)\n", debugData.ErrorCode, debugData.ErrorCode)
 	fmt.Println("")
 
-	// Display all 33 bits
+	// Display all 33 bits with durations
 	fmt.Println("Captured 33 bits:")
-	fmt.Println("Index | Bit | Expected")
-	fmt.Println("------+-----+---------")
+	fmt.Println("Index | Bit | Duration (cycles) | Duration (μs) | Expected | vs Threshold")
+	fmt.Println("------+-----+-------------------+---------------+----------+--------------")
+
+	const THRESHOLD_1MS = 200000 // 1ms at 200 MHz
+	const CYCLES_PER_US = 200
+
 	for i := 0; i < 33; i++ {
 		expected := "?"
 		if i == 0 {
@@ -85,7 +91,19 @@ func main() {
 			marker = " <- INVALID"
 		}
 
-		fmt.Printf("%5d | %3d | %s%s\n", i, debugData.Bits[i], expected, marker)
+		durationUs := float64(debugData.Durations[i]) / float64(CYCLES_PER_US)
+
+		thresholdInfo := ""
+		if debugData.Durations[i] > 0 {
+			if debugData.Durations[i] < THRESHOLD_1MS {
+				thresholdInfo = "< 1ms (SHORT)"
+			} else {
+				thresholdInfo = ">= 1ms (LONG)"
+			}
+		}
+
+		fmt.Printf("%5d | %3d | %17d | %13.1f | %s | %s%s\n",
+			i, debugData.Bits[i], debugData.Durations[i], durationUs, expected, thresholdInfo, marker)
 	}
 
 	fmt.Println("")
