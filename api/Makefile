@@ -172,6 +172,7 @@ build-pru-utils:
 	GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) -o $(BUILD_DIR)/pru-debug-bbb cmd/pru-debug.go
 	GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) -o $(BUILD_DIR)/pru-timing-reader-bbb cmd/pru-timing-reader.go
 	GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) -o $(BUILD_DIR)/pru-gpio-reader-bbb cmd/pru-gpio-reader.go
+	GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) -o $(BUILD_DIR)/pru-bits-reader-bbb cmd/pru-bits-reader.go
 	@echo "PRU utilities build complete"
 
 # Deploy PRU debug utilities to BeagleBone
@@ -180,11 +181,13 @@ deploy-pru-utils: build-pru-utils
 	@scp $(BUILD_DIR)/pru-debug-bbb $(DEPLOY_HOST):$(DEPLOY_PATH)pru-debug
 	@scp $(BUILD_DIR)/pru-timing-reader-bbb $(DEPLOY_HOST):$(DEPLOY_PATH)pru-timing-reader
 	@scp $(BUILD_DIR)/pru-gpio-reader-bbb $(DEPLOY_HOST):$(DEPLOY_PATH)pru-gpio-reader
+	@scp $(BUILD_DIR)/pru-bits-reader-bbb $(DEPLOY_HOST):$(DEPLOY_PATH)pru-bits-reader
 	@echo "PRU utilities deployed successfully"
 	@echo "On BeagleBone, run:"
 	@echo "  sudo ~/led-sound-light-control/pru-debug         - Monitor PRU status"
 	@echo "  sudo ~/led-sound-light-control/pru-timing-reader - Read timing capture data"
 	@echo "  sudo ~/led-sound-light-control/pru-gpio-reader   - Read raw GPIO samples"
+	@echo "  sudo ~/led-sound-light-control/pru-bits-reader   - Read captured IR bits"
 
 # Deploy everything (PRU firmware + Go binary)
 deploy-all: deploy-pru deploy

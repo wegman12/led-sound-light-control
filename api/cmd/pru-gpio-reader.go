@@ -15,9 +15,10 @@ const (
 )
 
 type gpioRawData struct {
-	SampleCount uint32
-	Complete    uint32
-	Samples     [maxGpioSamples]uint8
+	SampleCount            uint32
+	Complete               uint32
+	FirstFullRegisterValue uint32
+	Samples                [maxGpioSamples]uint8
 }
 
 func main() {
@@ -62,6 +63,12 @@ func main() {
 		fmt.Println("No samples captured yet. Make sure the PRU code is running and press a button.")
 		os.Exit(0)
 	}
+
+	// Display full GPIO register value for pin verification
+	fmt.Printf("DEBUG: First GPIO DATAIN register value: 0x%08X\n", gpioData.FirstFullRegisterValue)
+	fmt.Printf("  Bit 20 (our target): %d\n", (gpioData.FirstFullRegisterValue>>20)&1)
+	fmt.Printf("  All 32 bits: %032b\n", gpioData.FirstFullRegisterValue)
+	fmt.Println("")
 
 	// Analyze the data
 	zeros := 0
