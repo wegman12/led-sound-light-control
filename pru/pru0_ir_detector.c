@@ -50,11 +50,6 @@ struct my_resource_table {
 #define GPIO_RAW_DATA_OFFSET 0x00002000 /* Offset 8KB: Raw GPIO readings */
 #define MAX_GPIO_SAMPLES    8192        /* 8K samples of raw GPIO data */
 
-/* GPIO Configuration */
-#define GPIO0_BASE          0x44E07000
-#define GPIO_DATAIN_OFFSET  0x138
-#define GPIO_PIN_20         (1 << 20)
-
 /* PRU Clock: 200 MHz = 5 ns per cycle */
 #define PRU_CLOCK_HZ        200000000
 #define CYCLES_PER_US       200         /* 200 cycles per microsecond */
@@ -119,14 +114,12 @@ struct debug_bits_data {
     volatile uint32_t durations[33];  /* LOW pulse durations in cycles for each bit */
 };
 
-/* GPIO Access */
-#define GPIO_DATAIN (*(volatile uint32_t *)(GPIO0_BASE + GPIO_DATAIN_OFFSET))
-
-static inline uint32_t read_gpio20(void) {
-    /* Force explicit volatile read to avoid compiler optimization issues */
-    /* This fixed the noise/glitch problem - reading directly via macro caused issues */
-    volatile uint32_t reg_value = GPIO_DATAIN;
-    return (reg_value & GPIO_PIN_20) ? 1 : 0;
+/* PRU Direct GPIO Access via __R31 register */
+/* P9_31 maps to PRU0 bit 0 - much faster and more reliable than memory-mapped GPIO */
+/* No volatile tricks needed - __R31 is a hardware register designed for this */
+static inline uint32_t read_gpio(void) {
+    /* Read PRU0 input register bit 0 (P9_31) directly */
+    return (__R31 & 0x1);
 }
 
 /* PRU Cycle Counter Access */
@@ -249,7 +242,7 @@ static uint32_t wait_for_state(uint32_t target_state, uint32_t max_cycles, int *
     uint32_t start = get_cycles();
     uint32_t elapsed;
 
-    while (read_gpio20() != target_state) {
+    while (read_gpio() != target_state) {
         elapsed = get_cycles() - start;
         if (elapsed > max_cycles) {
             *timed_out = 1;
@@ -274,7 +267,7 @@ static uint32_t measure_state_duration(uint32_t current_state, uint32_t max_cycl
     /* Timer already started, so this delay is included in the measurement (correct) */
     __delay_cycles(160);
 
-    while (read_gpio20() == current_state) {  /* Loop WHILE in current state */
+    while (read_gpio() == current_state) {  /* Loop WHILE in current state */
         elapsed = get_cycles() - start;
         if (elapsed > max_cycles) {
             *timed_out = 1;
@@ -461,8 +454,8 @@ static void write_button_event(uint8_t button_type) {
 }
 
 /*
- * ORIGINAL DETECTION LOGIC - NOW RESTORED WITH GPIO FIX
- * GPIO read issue fixed by using explicit volatile reads in read_gpio20()
+ * ORIGINAL DETECTION LOGIC - NOW USING PRU DIRECT GPIO
+ * Migrated to P9_31 (PRU0 __R31 bit 0) for direct hardware register access
  */
 #if 1
 static void run_ir_detection_loop(void) {
@@ -473,7 +466,7 @@ static void run_ir_detection_loop(void) {
     /* Main IR detection loop */
     while (1) {
         /* Wait for GPIO LOW (signal present) - matches Go's trigger condition */
-        if (read_gpio20() == 0) {
+        if (read_gpio() == 0) {
             /* Attempt to read and decode the IR packet */
             button_code = read_ir_packet();
 
