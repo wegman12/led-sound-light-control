@@ -7,7 +7,7 @@ DEPLOY_HOST := bbb1.wegman
 KERNEL_VERSION := $(shell ssh $(DEPLOY_HOST) "uname -r" 2>/dev/null || echo "5.10.168-ti-r83")
 OVERLAY_PATH := /boot/dtbs/$(KERNEL_VERSION)/overlays/
 
-.PHONY: all build deploy deploy-uenv clean help
+.PHONY: all build deploy deploy-uenv deploy-gpio-service clean help
 
 all: build
 
@@ -56,6 +56,24 @@ deploy-uenv:
 	@echo ""
 	@echo "Backup saved at: /boot/uEnv.txt.backup.<timestamp>"
 
+# Deploy GPIO IR setup service
+deploy-gpio-service:
+	@echo "Deploying GPIO IR setup service to $(DEPLOY_HOST)..."
+	@echo "Copying script..."
+	@scp setup-gpio-ir.sh $(DEPLOY_HOST):~/
+	@ssh $(DEPLOY_HOST) "sudo cp ~/setup-gpio-ir.sh /usr/local/bin/ && sudo chmod +x /usr/local/bin/setup-gpio-ir.sh"
+	@echo "Copying systemd service..."
+	@scp gpio-ir-setup.service $(DEPLOY_HOST):~/
+	@ssh $(DEPLOY_HOST) "sudo cp ~/gpio-ir-setup.service /etc/systemd/system/"
+	@echo "Enabling service..."
+	@ssh $(DEPLOY_HOST) "sudo systemctl daemon-reload && sudo systemctl enable gpio-ir-setup.service"
+	@echo ""
+	@echo "GPIO IR setup service deployed and enabled!"
+	@echo ""
+	@echo "The service will run on next boot. To test immediately:"
+	@echo "  ssh $(DEPLOY_HOST) 'sudo systemctl start gpio-ir-setup.service'"
+	@echo "  ssh $(DEPLOY_HOST) 'sudo systemctl status gpio-ir-setup.service'"
+
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
@@ -65,8 +83,9 @@ clean:
 # Help target
 help:
 	@echo "Available targets:"
-	@echo "  make build       - Compile the device tree overlay"
-	@echo "  make deploy      - Build and deploy overlay to BeagleBone (requires reboot)"
-	@echo "  make deploy-uenv - Deploy uEnv.txt to BeagleBone (USE WITH CAUTION, requires reboot)"
-	@echo "  make clean       - Remove build artifacts"
-	@echo "  make help        - Show this help message"
+	@echo "  make build              - Compile the device tree overlay"
+	@echo "  make deploy             - Build and deploy overlay to BeagleBone (requires reboot)"
+	@echo "  make deploy-uenv        - Deploy uEnv.txt to BeagleBone (USE WITH CAUTION, requires reboot)"
+	@echo "  make deploy-gpio-service - Deploy GPIO IR setup systemd service (requires reboot)"
+	@echo "  make clean              - Remove build artifacts"
+	@echo "  make help               - Show this help message"
