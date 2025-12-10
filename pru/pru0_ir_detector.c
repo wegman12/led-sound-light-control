@@ -469,6 +469,10 @@ static void run_ir_detection_loop(void) {
 
     /* Main IR detection loop */
     while (1) {
+        /* DEBUG: Continuously write __R31 register value to event_count for monitoring */
+        ctrl->event_count = __R31;
+        ctrl->error_count = (__R31 & 0x1);  /* Bit 0 specifically */
+
         /* Wait for GPIO LOW (signal present) - matches Go's trigger condition */
         if (read_gpio() == 0) {
             /* Attempt to read and decode the IR packet */
