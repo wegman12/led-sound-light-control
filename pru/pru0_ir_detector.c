@@ -18,6 +18,10 @@
 #include <pru_cfg.h>
 #include <rsc_types.h>
 
+/* PRU input/output registers */
+volatile register uint32_t __R30;
+volatile register uint32_t __R31;
+
 /* Resource Table - REQUIRED by RemoteProc */
 struct my_resource_table {
     struct resource_table base;
