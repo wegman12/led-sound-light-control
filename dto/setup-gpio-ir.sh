@@ -19,21 +19,43 @@ PIN_CONFIG=0x37
 
 echo "Configuring GPIO0_20 (P9.41) for IR receiver..."
 
-# Write to pinmux register using devmem2
-if command -v devmem2 &> /dev/null; then
-    devmem2 $((PINMUX_BASE + PIN_OFFSET)) w 0x$PIN_CONFIG
-    echo "Pin configured via devmem2"
-elif [ -f /dev/mem ]; then
-    # Fallback: use busybox devmem if available
-    busybox devmem $((PINMUX_BASE + PIN_OFFSET)) 32 0x$PIN_CONFIG 2>/dev/null || {
-        echo "ERROR: Neither devmem2 nor busybox devmem available"
-        exit 1
-    }
-    echo "Pin configured via busybox devmem"
-else
-    echo "ERROR: No method available to configure pinmux"
-    exit 1
-fi
+# Write to pinmux register using Python
+python3 - <<PYTHON_SCRIPT
+import struct
+import os
+
+PINMUX_BASE = $PINMUX_BASE
+PIN_OFFSET = $PIN_OFFSET
+PIN_CONFIG = $PIN_CONFIG
+PAGE_SIZE = 4096
+
+# Open /dev/mem
+with open('/dev/mem', 'r+b', buffering=0) as mem:
+    # Calculate page-aligned address
+    page_addr = (PINMUX_BASE + PIN_OFFSET) & ~(PAGE_SIZE - 1)
+    page_offset = (PINMUX_BASE + PIN_OFFSET) - page_addr
+
+    # Map the page
+    import mmap
+    mm = mmap.mmap(mem.fileno(), PAGE_SIZE,
+                   mmap.MAP_SHARED,
+                   mmap.PROT_READ | mmap.PROT_WRITE,
+                   offset=page_addr)
+
+    # Write the configuration value
+    mm.seek(page_offset)
+    mm.write(struct.pack('<I', PIN_CONFIG))
+
+    # Read back to verify
+    mm.seek(page_offset)
+    value = struct.unpack('<I', mm.read(4))[0]
+
+    mm.close()
+
+    print(f"Pin configured: wrote 0x{PIN_CONFIG:02x}, read back 0x{value:02x}")
+PYTHON_SCRIPT
+
+echo "Pin configured via Python"
 
 # Export GPIO if not already exported
 if [ ! -d /sys/class/gpio/gpio20 ]; then
