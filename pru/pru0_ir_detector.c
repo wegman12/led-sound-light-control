@@ -45,6 +45,10 @@ struct my_resource_table {
 #define BUTTON_RING_BUFFER  0x00000000  /* Offset 0: Ring buffer */
 #define CONTROL_BLOCK       0x00001000  /* Offset 4KB: Control structure */
 #define RING_BUFFER_SIZE    256         /* 256 events */
+#define TIMING_DATA_OFFSET  0x00002000  /* Offset 8KB: Raw timing data */
+#define MAX_TIMING_SAMPLES  512         /* Maximum transitions to capture */
+#define GPIO_RAW_DATA_OFFSET 0x00002000 /* Offset 8KB: Raw GPIO readings */
+#define MAX_GPIO_SAMPLES    8192        /* 8K samples of raw GPIO data */
 
 /* GPIO Configuration */
 #define GPIO0_BASE          0x44E07000
@@ -60,6 +64,8 @@ struct my_resource_table {
 #define MAX_BIT_WAIT        800000000     /* 400 ms = 40M cycles */
 #define MAX_PACKET_DURATION 2000000000    /* 1000 ms = 200M cycles */
 #define IDLE_DELAY          1000        /* 5 μs between checks */
+#define TIMEOUT_1_SECOND    200000000   /* 1 second = 200M cycles */
+#define DEBOUNCE_CYCLES     2000        /* 10 μs debounce = 2,000 cycles */
 
 /* Protocol Constants */
 #define IR_PACKET_LENGTH    33
@@ -81,6 +87,26 @@ struct button_event {
     uint8_t reserved1;
     uint16_t reserved2;
     uint32_t timestamp;
+};
+
+/* Timing Sample Structure (8 bytes) */
+struct timing_sample {
+    uint32_t state;       /* 0 or 1 */
+    uint32_t duration;    /* Duration in cycles */
+};
+
+/* Timing Capture Structure */
+struct timing_data {
+    volatile uint32_t sample_count;
+    volatile uint32_t complete;
+    struct timing_sample samples[MAX_TIMING_SAMPLES];
+};
+
+/* Raw GPIO Data Structure - Simple byte array for raw readings */
+struct gpio_raw_data {
+    volatile uint32_t sample_count;
+    volatile uint32_t complete;
+    volatile uint8_t samples[MAX_GPIO_SAMPLES];  /* Each byte is a GPIO reading (0 or 1) */
 };
 
 /* GPIO Access */
@@ -343,31 +369,16 @@ static void write_button_event(uint8_t button_type) {
     ctrl->event_count++;
 }
 
-/* Main function */
-void main(void) {
+/*
+ * ORIGINAL DETECTION LOGIC - COMMENTED OUT FOR DEBUG
+ * This function contains the original IR packet detection logic.
+ * Restore this in main() after debugging is complete.
+ */
+#if 0
+static void run_ir_detection_loop(void) {
     struct control_block *ctrl = (struct control_block *)(PRU_SHARED_MEM + CONTROL_BLOCK);
     int button_code;
     int timed_out;
-
-    /* Enable OCP master port - allows PRU to access peripheral registers like GPIO */
-    CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
-
-    /* Enable cycle counter by setting bit 3 in CTRL register */
-    /* Read current control value, set bit 3, write back */
-    uint32_t control_val = PRU0_CTRL.CTRL;
-    control_val |= (1 << 3);  /* Set COUNTER_EN bit */
-    PRU0_CTRL.CTRL = control_val;
-
-    /* Reset cycle counter to 0 */
-    PRU0_CTRL.CYCLE = 0;
-
-    /* Initialize control block */
-    ctrl->write_index = 0;
-    ctrl->read_index = 0;
-    ctrl->event_count = 0;
-    ctrl->error_count = 0;
-    ctrl->overrun_count = 0;
-    ctrl->status = 1;  /* Running */
 
     /* Main IR detection loop */
     while (1) {
@@ -378,7 +389,7 @@ void main(void) {
 
             if (button_code >= 0) {
                 /* Valid button detected */
-                // write_button_event((uint8_t)button_code);
+                write_button_event((uint8_t)button_code);
             } else {
                 ctrl->error_count++;
             }
@@ -388,6 +399,52 @@ void main(void) {
         }
 
         /* 1μs delay between main loop iterations to match Go's polling behavior */
-        // __delay_cycles(200);
+        __delay_cycles(200);
+    }
+}
+#endif
+
+/* Main function - DEBUG MODE: Raw GPIO Reading Test */
+void main(void) {
+    struct control_block *ctrl = (struct control_block *)(PRU_SHARED_MEM + CONTROL_BLOCK);
+    struct gpio_raw_data *gpio_data = (struct gpio_raw_data *)(PRU_SHARED_MEM + GPIO_RAW_DATA_OFFSET);
+
+    /* Enable OCP master port - allows PRU to access peripheral registers like GPIO */
+    CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
+
+    /* Initialize control block */
+    ctrl->write_index = 0;
+    ctrl->read_index = 0;
+    ctrl->event_count = 0;
+    ctrl->error_count = 0;
+    ctrl->overrun_count = 0;
+    ctrl->status = 1;  /* Running */
+
+    /* Initialize GPIO data structure */
+    gpio_data->sample_count = 0;
+    gpio_data->complete = 0;
+
+    /* Wait for initial LOW (0) to start capturing */
+    while (read_gpio20() == 1) {
+        /* Busy wait - no delay */
+    }
+
+    /* Raw GPIO reading loop - sample as fast as possible */
+    uint32_t i;
+    for (i = 0; i < MAX_GPIO_SAMPLES; i++) {
+        gpio_data->samples[i] = (uint8_t)read_gpio20();
+    }
+
+    /* Mark capture as complete */
+    gpio_data->sample_count = MAX_GPIO_SAMPLES;
+    gpio_data->complete = 1;
+
+    /* Signal completion in control block */
+    ctrl->event_count = MAX_GPIO_SAMPLES;
+    ctrl->status = 2;  /* Capture complete */
+
+    /* Halt - wait forever */
+    while (1) {
+        __delay_cycles(1000);
     }
 }

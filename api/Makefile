@@ -27,7 +27,7 @@ PRU_DIR=../pru
 PRU_FIRMWARE=$(PRU_DIR)/gen/pru0_ir_detector.out
 PRU_INSTALL_PATH=/lib/firmware/am335x-pru0-fw
 
-.PHONY: all build test clean run install deps fmt vet lint build-bbb deploy help build-pru clean-pru deploy-pru deploy-all
+.PHONY: all build test clean run install deps fmt vet lint build-bbb deploy help build-pru clean-pru deploy-pru deploy-all build-pru-utils deploy-pru-utils
 
 # Default target
 all: deps fmt vet test build
@@ -150,7 +150,7 @@ deploy-pru:
 	@echo "Deploying PRU firmware to $(DEPLOY_HOST)..."
 	@echo "Copying PRU source files to BeagleBone..."
 	@ssh $(DEPLOY_HOST) "mkdir -p ~/led-sound-light-control/pru"
-	@scp -r $(PRU_DIR)/*.c $(PRU_DIR)/*.cmd $(PRU_DIR)/Makefile $(DEPLOY_HOST):~/led-sound-light-control/pru/
+	@scp -r $(PRU_DIR)/*.c $(PRU_DIR)/*.h $(PRU_DIR)/*.cmd $(PRU_DIR)/Makefile $(DEPLOY_HOST):~/led-sound-light-control/pru/
 	@echo "Building PRU firmware on BeagleBone..."
 	@ssh $(DEPLOY_HOST) "cd ~/led-sound-light-control/pru && make"
 	@echo "Installing and loading firmware..."
@@ -164,6 +164,27 @@ deploy-pru:
 	                     echo 'Verifying PRU state...' && \
 	                     cat /sys/class/remoteproc/remoteproc1/state"
 	@echo "PRU firmware deployed and loaded successfully"
+
+# Build PRU debug utilities for BeagleBone
+build-pru-utils:
+	@echo "Building PRU utilities for BeagleBone Black (ARM v7)..."
+	@mkdir -p $(BUILD_DIR)
+	GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) -o $(BUILD_DIR)/pru-debug-bbb cmd/pru-debug.go
+	GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) -o $(BUILD_DIR)/pru-timing-reader-bbb cmd/pru-timing-reader.go
+	GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) -o $(BUILD_DIR)/pru-gpio-reader-bbb cmd/pru-gpio-reader.go
+	@echo "PRU utilities build complete"
+
+# Deploy PRU debug utilities to BeagleBone
+deploy-pru-utils: build-pru-utils
+	@echo "Deploying PRU utilities to $(DEPLOY_HOST)..."
+	@scp $(BUILD_DIR)/pru-debug-bbb $(DEPLOY_HOST):$(DEPLOY_PATH)pru-debug
+	@scp $(BUILD_DIR)/pru-timing-reader-bbb $(DEPLOY_HOST):$(DEPLOY_PATH)pru-timing-reader
+	@scp $(BUILD_DIR)/pru-gpio-reader-bbb $(DEPLOY_HOST):$(DEPLOY_PATH)pru-gpio-reader
+	@echo "PRU utilities deployed successfully"
+	@echo "On BeagleBone, run:"
+	@echo "  sudo ~/led-sound-light-control/pru-debug         - Monitor PRU status"
+	@echo "  sudo ~/led-sound-light-control/pru-timing-reader - Read timing capture data"
+	@echo "  sudo ~/led-sound-light-control/pru-gpio-reader   - Read raw GPIO samples"
 
 # Deploy everything (PRU firmware + Go binary)
 deploy-all: deploy-pru deploy
@@ -205,6 +226,10 @@ help:
 	@echo "  make clean-pru      - Remove PRU build artifacts"
 	@echo "  make deploy-pru     - Copy source to BeagleBone, build and load firmware"
 	@echo "  make deploy-all     - Deploy both PRU firmware and Go binary (recommended)"
+	@echo ""
+	@echo "PRU Debug Utilities:"
+	@echo "  make build-pru-utils  - Build PRU debug utilities for BeagleBone"
+	@echo "  make deploy-pru-utils - Build and deploy PRU debug utilities"
 	@echo ""
 	@echo "Combo:"
 	@echo "  make all            - Run deps, fmt, vet, test, and build"
