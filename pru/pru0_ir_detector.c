@@ -57,8 +57,8 @@ struct my_resource_table {
 
 /* Timing Thresholds (in cycles) */
 #define THRESHOLD_1MS       200000      /* 1000 μs = 200,000 cycles */
-#define MAX_BIT_WAIT        2000000     /* 10 ms = 2M cycles */
-#define MAX_PACKET_DURATION 20000000    /* 100 ms = 20M cycles */
+#define MAX_BIT_WAIT        800000000     /* 400 ms = 40M cycles */
+#define MAX_PACKET_DURATION 2000000000    /* 1000 ms = 200M cycles */
 #define IDLE_DELAY          1000        /* 5 μs between checks */
 
 /* Protocol Constants */
@@ -217,7 +217,7 @@ static uint32_t wait_for_state(uint32_t target_state, uint32_t max_cycles, int *
             return elapsed;
         }
         /* 1μs delay between reads to match Go's polling behavior (200 cycles @ 200MHz) */
-        __delay_cycles(200);
+        __delay_cycles(20);
     }
 
     *timed_out = 0;
@@ -249,6 +249,7 @@ static int match_button_code(const uint8_t bits[IR_PACKET_LENGTH]) {
 
 /* Read and decode 33-bit IR packet */
 static int read_ir_packet(void) {
+    struct control_block *ctrl = (struct control_block *)(PRU_SHARED_MEM + CONTROL_BLOCK);
     uint8_t bits[IR_PACKET_LENGTH];
     int i;
     int timed_out;
@@ -259,6 +260,8 @@ static int read_ir_packet(void) {
     /* Wait for it to go HIGH to complete the initial LOW pulse */
     wait_for_state(1, MAX_BIT_WAIT, &timed_out);
     if (timed_out) {
+        ctrl->event_count = 0xFFFF;
+        ctrl->overrun_count = 0;
         return -1;
     }
 
@@ -266,18 +269,25 @@ static int read_ir_packet(void) {
     for (i = 0; i < IR_PACKET_LENGTH; i++) {
         /* Check packet timeout */
         if ((get_cycles() - packet_start) > MAX_PACKET_DURATION) {
+            ctrl->event_count = 0xFFFD;
+            ctrl->overrun_count = i;
             return -1;
         }
 
         /* Wait for GPIO LOW (end of HIGH/space period) - measure HIGH duration */
         space_cycles = wait_for_state(0, MAX_BIT_WAIT, &timed_out);
         if (timed_out) {
+
+            ctrl->event_count = 0xFFFC;
+            ctrl->overrun_count = i;
             return -1;
         }
 
         /* Wait for GPIO HIGH (end of LOW/mark period) - don't measure this */
         wait_for_state(1, MAX_BIT_WAIT, &timed_out);
         if (timed_out) {
+            ctrl->event_count = 0xFFFB;
+            ctrl->overrun_count = i;
             return -1;
         }
 
@@ -286,10 +296,24 @@ static int read_ir_packet(void) {
     }
 
     /* Validate protocol structure */
-    if (bits[0] != 1) return -1;                          /* START bit */
-    if (!all_zeros(&bits[1], 8)) return -1;               /* HEADER (bits 1-8) */
-    if (!all_ones(&bits[9], 8)) return -1;                /* SEPARATOR (bits 9-16) */
-    if (bits[32] != 1) return -1;                         /* STOP bit */
+    if (bits[0] != 1) {
+        ctrl->event_count = 0xFFDF;
+        return -1;
+    }                          /* START bit */
+    if (!all_zeros(&bits[1], 8)) {
+        ctrl->event_count = 0xFFDE;
+        return -1;
+    }               /* HEADER (bits 1-8) */
+    if (!all_ones(&bits[9], 8)) {
+
+        ctrl->event_count = 0xFFDD;
+        return -1;
+    }               /* SEPARATOR (bits 9-16) */
+    if (bits[32] != 1) {
+
+        ctrl->event_count = 0xFFC;
+        return -1;
+    }                        /* STOP bit */
 
     /* Match against known button codes */
     return match_button_code(bits);
@@ -354,7 +378,7 @@ void main(void) {
 
             if (button_code >= 0) {
                 /* Valid button detected */
-                write_button_event((uint8_t)button_code);
+                // write_button_event((uint8_t)button_code);
             } else {
                 ctrl->error_count++;
             }
@@ -364,6 +388,6 @@ void main(void) {
         }
 
         /* 1μs delay between main loop iterations to match Go's polling behavior */
-        __delay_cycles(200);
+        // __delay_cycles(200);
     }
 }
