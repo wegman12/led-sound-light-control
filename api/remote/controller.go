@@ -20,15 +20,23 @@ type Controller struct {
 	logger          *zap.Logger
 }
 
-func NewController(ctx context.Context, gpioPin uint, lightController *light.Controller, wg *sync.WaitGroup, logger *zap.Logger) *Controller {
-	logger.Debug("Initializing remote controller", zap.Uint("gpio_pin", gpioPin))
+func NewController(ctx context.Context, gpioPin uint, lightController *light.Controller, wg *sync.WaitGroup, logger *zap.Logger) (*Controller, error) {
+	logger.Debug("Initializing remote controller with PRU", zap.Uint("gpio_pin", gpioPin))
+
+	manager, err := NewManager(logger)
+	if err != nil {
+		logger.Error("Failed to initialize PRU-based remote manager", zap.Error(err))
+		return nil, fmt.Errorf("PRU initialization failed: %w", err)
+	}
+
+	logger.Info("PRU-based remote controller initialized successfully")
 	return &Controller{
 		ctx:             ctx,
-		manager:         NewManager(gpioPin),
+		manager:         manager,
 		lightController: lightController,
 		wg:              wg,
 		logger:          logger,
-	}
+	}, nil
 }
 
 func (c *Controller) Start() {

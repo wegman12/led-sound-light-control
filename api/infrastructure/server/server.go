@@ -29,11 +29,14 @@ type Server struct {
 }
 
 // NewServer creates a new Server instance with the given configuration
-func NewServer(config ServerConfig, ctx context.Context, logger *zap.Logger) *Server {
+// Returns error if PRU initialization or route registration fails
+func NewServer(config ServerConfig, ctx context.Context, logger *zap.Logger) (*Server, error) {
 	mux := http.NewServeMux()
 
 	wg := &sync.WaitGroup{}
-	RegisterRoutes(mux, ctx, wg, logger)
+	if err := RegisterRoutes(mux, ctx, wg, logger); err != nil {
+		return nil, fmt.Errorf("failed to register routes: %w", err)
+	}
 
 	// Wrap mux with CORS middleware
 	handler := corsMiddleware(mux)
@@ -54,7 +57,7 @@ func NewServer(config ServerConfig, ctx context.Context, logger *zap.Logger) *Se
 		},
 		cleanupEvents: wg,
 		logger:        logger,
-	}
+	}, nil
 }
 
 // Start starts the HTTP server and handles graceful shutdown

@@ -2,39 +2,66 @@ package remote
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	"github.com/wegman12/led-sound-light-control/utilities"
+	"go.uber.org/zap"
 )
 
 type Manager struct {
-	gpioPin uint
+	detector *PRUDetector
+	logger   *zap.Logger
 }
 
-func NewManager(gpioPin uint) *Manager {
-	return &Manager{
-		gpioPin: gpioPin,
+// NewManager creates a new remote manager using PRU-based IR detection
+// Returns error if PRU initialization fails
+func NewManager(logger *zap.Logger) (*Manager, error) {
+	detector, err := newPRUDetector()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize PRU detector: %w", err)
 	}
+
+	return &Manager{
+		detector: detector,
+		logger:   logger,
+	}, nil
 }
 
+// Close releases PRU resources
+func (m *Manager) Close() error {
+	if m.detector != nil {
+		return m.detector.Close()
+	}
+	return nil
+}
+
+// ReportButtonPressesUntilContextCancelled polls PRU for button events at 100ms intervals
+// Sends detected buttons to the buttonPresses channel until context is cancelled
 func (m *Manager) ReportButtonPressesUntilContextCancelled(buttonPresses chan ButtonType, ctx context.Context) {
-	pulses := make(chan []DetectionPulse, 100)
-	d := newDetector(m.gpioPin, DetectorConfig{
-		MaximumDurationWait:  0,
-		MaximumPulseDuration: 0,
-		DelayTime:            0,
-	})
-	defer d.Close()
-	go func() {
-		dr := newDurationReducer(time.Duration(0))
-		for pulse := range pulses {
-			code := utilities.Apply(pulse, dr.isLowDuration)
-			buttonType := matchCode(code)
-			if buttonType != nil {
-				buttonPresses <- *buttonType
+	defer m.Close()
+	defer close(buttonPresses)
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Read available button events from PRU ring buffer
+			buttons, err := m.detector.ReadButtons()
+			if err != nil {
+				// Log error but continue - don't crash on read errors
+				fmt.Printf("Error reading PRU buttons: %v\n", err)
+				continue
+			}
+
+			// Send all detected buttons to channel
+			for _, button := range buttons {
+				m.logger.Debug(fmt.Sprintf("Detected button press: %s", ButtonNames[button]))
+				buttonPresses <- button
 			}
 		}
-	}()
-
-	d.ReadPulsesUntilContextCancelled(pulses, ctx)
+	}
 }

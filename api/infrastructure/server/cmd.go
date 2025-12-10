@@ -51,7 +51,11 @@ func MakeServerCmd() *cobra.Command {
 				ShutdownTimeout: serverCfg.shutdownTimeout,
 			}
 
-			server := NewServer(config, ctx, logger)
+			server, err := NewServer(config, ctx, logger)
+			if err != nil {
+				logger.Fatal("Failed to create server", zap.Error(err))
+				return err
+			}
 			return server.Start(ctx)
 		},
 	}

@@ -15,7 +15,7 @@ const (
 	defaultRemoteGPIOPin = 20
 )
 
-func RegisterRoutes(mux *http.ServeMux, ctx context.Context, wg *sync.WaitGroup, logger *zap.Logger) {
+func RegisterRoutes(mux *http.ServeMux, ctx context.Context, wg *sync.WaitGroup, logger *zap.Logger) error {
 	logger.Debug("Registering routes")
 
 	health.RegisterRoutes(mux)
@@ -23,9 +23,14 @@ func RegisterRoutes(mux *http.ServeMux, ctx context.Context, wg *sync.WaitGroup,
 	// Create and register light controller
 	lightController := light.RegisterRoutes(mux, ctx, wg, logger)
 
-	// Create and start remote controller
-	remoteController := remote.NewController(ctx, defaultRemoteGPIOPin, lightController, wg, logger)
+	// Create and start remote controller (PRU-based)
+	remoteController, err := remote.NewController(ctx, defaultRemoteGPIOPin, lightController, wg, logger)
+	if err != nil {
+		logger.Fatal("Failed to initialize PRU-based remote controller", zap.Error(err))
+		return err
+	}
 	remoteController.Start()
 
-	logger.Info("Routes registered successfully")
+	logger.Info("Routes registered successfully (with PRU remote control)")
+	return nil
 }

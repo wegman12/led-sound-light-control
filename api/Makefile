@@ -22,7 +22,12 @@ DEPLOY_HOST=bbb1.wegman
 DEPLOY_PATH=~/led-sound-light-control/
 BBB_BINARY=$(BINARY_NAME)-bbb
 
-.PHONY: all build test clean run install deps fmt vet lint build-bbb deploy help
+# PRU Configuration
+PRU_DIR=../pru
+PRU_FIRMWARE=$(PRU_DIR)/gen/pru0_ir_detector.out
+PRU_INSTALL_PATH=/lib/firmware/am335x-pru0-fw
+
+.PHONY: all build test clean run install deps fmt vet lint build-bbb deploy help build-pru clean-pru deploy-pru deploy-all
 
 # Default target
 all: deps fmt vet test build
@@ -47,8 +52,8 @@ test-coverage:
 	@echo "Coverage report generated: coverage.html"
 
 # Clean build artifacts
-clean:
-	@echo "Cleaning..."
+clean: clean-pru
+	@echo "Cleaning Go artifacts..."
 	$(GOCLEAN)
 	@rm -rf $(BUILD_DIR)
 	@rm -f coverage.out coverage.html
@@ -108,19 +113,81 @@ build-bbb:
 	GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) -o $(BUILD_DIR)/$(BBB_BINARY) $(MAIN_PATH)
 	@echo "BeagleBone Black build complete: $(BUILD_DIR)/$(BBB_BINARY)"
 
-# Deploy to BeagleBone Black
+# Deploy to BeagleBone Black (Go binary only)
 deploy: build-bbb
-	@echo "Deploying to $(DEPLOY_HOST):$(DEPLOY_PATH)..."
-	scp $(BUILD_DIR)/$(BBB_BINARY) $(DEPLOY_HOST):$(DEPLOY_PATH)$(BINARY_NAME)
-	@echo "Deployment complete"
+	@echo "Deploying Go binary to $(DEPLOY_HOST):$(DEPLOY_PATH)..."
+	@echo "Stopping service..."
+	@ssh $(DEPLOY_HOST) "sudo systemctl stop led-sound-light-control.service 2>/dev/null || true"
+	@echo "Copying binary..."
+	@scp $(BUILD_DIR)/$(BBB_BINARY) $(DEPLOY_HOST):$(DEPLOY_PATH)$(BINARY_NAME)
+	@echo "Starting service..."
+	@ssh $(DEPLOY_HOST) "sudo systemctl start led-sound-light-control.service"
+	@echo "Go binary deployment complete"
+
+# Build PRU firmware (local build - requires TI PRU compiler)
+build-pru:
+	@echo "Building PRU firmware locally..."
+	@if ! command -v clpru > /dev/null 2>&1; then \
+		echo "ERROR: TI PRU compiler (clpru) not found."; \
+		echo ""; \
+		echo "Options:"; \
+		echo "  1. Use 'make deploy-pru' to build on BeagleBone (recommended)"; \
+		echo "  2. Install TI PRU compiler locally:"; \
+		echo "     - Download from: https://www.ti.com/tool/PRU-CGT"; \
+		echo "     - Or on Debian: sudo apt-get install ti-pru-cgt-installer"; \
+		exit 1; \
+	fi
+	$(MAKE) -C $(PRU_DIR)
+	@echo "PRU firmware build complete: $(PRU_FIRMWARE)"
+
+# Clean PRU build artifacts
+clean-pru:
+	@echo "Cleaning PRU artifacts..."
+	@$(MAKE) -C $(PRU_DIR) clean 2>/dev/null || true
+
+# Deploy PRU firmware to BeagleBone (builds on target)
+deploy-pru:
+	@echo "Deploying PRU firmware to $(DEPLOY_HOST)..."
+	@echo "Copying PRU source files to BeagleBone..."
+	@ssh $(DEPLOY_HOST) "mkdir -p ~/led-sound-light-control/pru"
+	@scp -r $(PRU_DIR)/*.c $(PRU_DIR)/*.cmd $(PRU_DIR)/Makefile $(DEPLOY_HOST):~/led-sound-light-control/pru/
+	@echo "Building PRU firmware on BeagleBone..."
+	@ssh $(DEPLOY_HOST) "cd ~/led-sound-light-control/pru && make"
+	@echo "Installing and loading firmware..."
+	@ssh $(DEPLOY_HOST) "sudo cp ~/led-sound-light-control/pru/gen/pru0_ir_detector.out $(PRU_INSTALL_PATH) && \
+	                     echo 'Stopping PRU (if running)...' && \
+	                     (echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc1/state > /dev/null 2>&1 || true) && \
+	                     sleep 1 && \
+	                     echo 'Starting PRU...' && \
+	                     echo 'start' | sudo tee /sys/class/remoteproc/remoteproc1/state > /dev/null && \
+	                     sleep 1 && \
+	                     echo 'Verifying PRU state...' && \
+	                     cat /sys/class/remoteproc/remoteproc1/state"
+	@echo "PRU firmware deployed and loaded successfully"
+
+# Deploy everything (PRU firmware + Go binary)
+deploy-all: deploy-pru deploy
+	@echo ""
+	@echo "==================================="
+	@echo "Full deployment complete!"
+	@echo "==================================="
+	@echo "PRU firmware: $(PRU_FIRMWARE) -> $(PRU_INSTALL_PATH)"
+	@echo "Go binary: $(BUILD_DIR)/$(BBB_BINARY) -> $(DEPLOY_PATH)$(BINARY_NAME)"
+	@echo ""
+	@echo "To start the application on BeagleBone:"
+	@echo "  ssh $(DEPLOY_HOST)"
+	@echo "  cd $(DEPLOY_PATH)"
+	@echo "  sudo ./$(BINARY_NAME) serve"
 
 # Display help
 help:
 	@echo "Available targets:"
+	@echo ""
+	@echo "Go Application:"
 	@echo "  make build          - Build the binary"
 	@echo "  make test           - Run tests"
 	@echo "  make test-coverage  - Run tests with coverage report"
-	@echo "  make clean          - Remove build artifacts"
+	@echo "  make clean          - Remove all build artifacts (Go + PRU)"
 	@echo "  make run            - Run the application"
 	@echo "  make install        - Install binary to \$$GOPATH/bin"
 	@echo "  make deps           - Download and tidy dependencies"
@@ -128,7 +195,17 @@ help:
 	@echo "  make vet            - Run go vet"
 	@echo "  make lint           - Run golangci-lint (if installed)"
 	@echo "  make build-all      - Build for multiple platforms"
+	@echo ""
+	@echo "BeagleBone Black Deployment:"
 	@echo "  make build-bbb      - Build for BeagleBone Black (ARM v7)"
-	@echo "  make deploy         - Build and deploy to BeagleBone Black"
+	@echo "  make deploy         - Build and deploy Go binary only"
+	@echo ""
+	@echo "PRU Firmware:"
+	@echo "  make build-pru      - Build PRU firmware locally (requires clpru)"
+	@echo "  make clean-pru      - Remove PRU build artifacts"
+	@echo "  make deploy-pru     - Copy source to BeagleBone, build and load firmware"
+	@echo "  make deploy-all     - Deploy both PRU firmware and Go binary (recommended)"
+	@echo ""
+	@echo "Combo:"
 	@echo "  make all            - Run deps, fmt, vet, test, and build"
 	@echo "  make help           - Display this help message"
