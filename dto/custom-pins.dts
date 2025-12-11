@@ -6,6 +6,16 @@
     part-number = "custom-pins";
     version = "00A0";
 
+    /* State the resources this cape uses */
+    exclusive-use =
+        /* PWM pins */
+        "P9.14", "ehrpwm1A",
+        "P9.16", "ehrpwm1B",
+        "P8.13", "ehrpwm2B",
+        "P8.19", "ehrpwm2A",
+        /* IR receiver GPIO (currently PRU mode, but reserving) */
+        "P9.27";
+
     fragment@0 {
         target-path = "/chosen";
         __overlay__ {
@@ -18,7 +28,21 @@
     fragment@1 {
         target = <&am33xx_pinmux>;
         __overlay__ {
-            custom_pins: pinmux_custom_pins {
+            ehrpwm1_pins: pinmux_ehrpwm1_pins {
+                pinctrl-single,pins = <
+                    0x048 0x06  /* P9_14: gpmc_a2.ehrpwm1A, MODE 6 */
+                    0x04C 0x06  /* P9_16: gpmc_a3.ehrpwm1B, MODE 6 */
+                >;
+            };
+
+            ehrpwm2_pins: pinmux_ehrpwm2_pins {
+                pinctrl-single,pins = <
+                    0x024 0x04  /* P8_13: gpmc_ad9.ehrpwm2B, MODE 4 */
+                    0x020 0x04  /* P8_19: gpmc_ad8.ehrpwm2A, MODE 4 */
+                >;
+            };
+
+            pru_pins: pinmux_pru_pins {
                 pinctrl-single,pins = <
                     /* P9_27: PRU0 input bit 5 for IR receiver - MODE 5 (PRU) */
                     0x1A4 0x35  /* mcasp0_fsr.pr1_pru0_pru_r31_5, INPUT | PULLUP | MODE5 */
@@ -34,7 +58,40 @@
         target = <&pruss>;
         __overlay__ {
             pinctrl-names = "default";
-            pinctrl-0 = <&custom_pins>;
+            pinctrl-0 = <&pru_pins>;
+        };
+    };
+
+    /* Enable PWM subsystems for LED control */
+    fragment@3 {
+        target = <&epwmss1>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    fragment@4 {
+        target = <&ehrpwm1>;
+        __overlay__ {
+            pinctrl-names = "default";
+            pinctrl-0 = <&ehrpwm1_pins>;
+            status = "okay";
+        };
+    };
+
+    fragment@5 {
+        target = <&epwmss2>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    fragment@6 {
+        target = <&ehrpwm2>;
+        __overlay__ {
+            pinctrl-names = "default";
+            pinctrl-0 = <&ehrpwm2_pins>;
+            status = "okay";
         };
     };
 };
