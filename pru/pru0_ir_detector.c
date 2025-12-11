@@ -1,11 +1,11 @@
 /*
  * PRU0 IR Remote Detector Firmware
  *
- * Detects IR remote signals on GPIO 20, decodes 34-bit NEC-like protocol,
+ * Detects IR remote signals on P9_27 (PRU0 __R31 bit 5), decodes 34-bit NEC-like protocol,
  * matches against 44 known button codes, and writes events to shared memory
  * ring buffer for consumption by Go application.
  *
- * IMPORTANT: GPIO 20 is ACTIVE-LOW (pulled high by default)
+ * IMPORTANT: P9_27 IR input is ACTIVE-LOW (pulled high by default)
  *   - GPIO HIGH (1) = No signal (idle state)
  *   - GPIO LOW (0)  = Signal present (IR transmitting)
  *
@@ -17,6 +17,8 @@
 #include <pru_ctrl.h>
 #include <pru_cfg.h>
 #include <rsc_types.h>
+#include <pru_iep.h>
+#include <pru_intc.h>
 
 /* PRU input/output registers */
 volatile register uint32_t __R30;
@@ -37,12 +39,17 @@ struct my_resource_table {
 /* PRU Configuration Registers */
 #define PRUSS_CFG_BASE  0x00026000
 #define SYSCFG_OFFSET   0x04
+#define GPCFG0_OFFSET   0x08  /* GPI configuration for PRU0 */
 #define SYSCFG_ADDR     ((volatile uint32_t *)(PRUSS_CFG_BASE + SYSCFG_OFFSET))
+#define GPCFG0_ADDR     ((volatile uint32_t *)(PRUSS_CFG_BASE + GPCFG0_OFFSET))
 
 /* SYSCFG register bits */
 #define SYSCFG_STANDBY_INIT  (1 << 4)
 #define SYSCFG_IDLE_MODE     (0 << 2)  /* No idle mode */
 #define SYSCFG_SUB_MWAIT     (1 << 5)  /* Enable OCP master ports */
+
+/* GPCFG0 register values */
+#define GPCFG_PRU_GPI_MODE  0x0  /* Direct connect mode - GPI pins connect to __R31 */
 
 /* Memory Layout */
 #define PRU_SHARED_MEM      0x00010000
@@ -119,11 +126,11 @@ struct debug_bits_data {
 };
 
 /* PRU Direct GPIO Access via __R31 register */
-/* P9_31 maps to PRU0 bit 0 - much faster and more reliable than memory-mapped GPIO */
+/* P9_27 maps to PRU0 bit 5 - much faster and more reliable than memory-mapped GPIO */
 /* No volatile tricks needed - __R31 is a hardware register designed for this */
 static inline uint32_t read_gpio(void) {
-    /* Read PRU0 input register bit 0 (P9_31) directly */
-    return (__R31 & 0x1);
+    /* Read PRU0 input register bit 5 (P9_27) directly */
+    return (__R31 & 0x20) >> 5;
 }
 
 /* PRU Cycle Counter Access */
@@ -459,19 +466,29 @@ static void write_button_event(uint8_t button_type) {
 
 /*
  * ORIGINAL DETECTION LOGIC - NOW USING PRU DIRECT GPIO
- * Migrated to P9_31 (PRU0 __R31 bit 0) for direct hardware register access
+ * Migrated to P9_27 (PRU0 __R31 bit 5) for direct hardware register access
  */
 #if 1
 static void run_ir_detection_loop(void) {
     struct control_block *ctrl = (struct control_block *)(PRU_SHARED_MEM + CONTROL_BLOCK);
     int button_code;
     int timed_out;
+    int loop_count = 0;
+
+    /* Small delay to let debug tool read initial GPCFG0 values */
+    __delay_cycles(2000000);  /* 10ms delay */
 
     /* Main IR detection loop */
     while (1) {
         /* DEBUG: Continuously write __R31 register value to event_count for monitoring */
         ctrl->event_count = __R31;
-        ctrl->error_count = (__R31 & 0x1);  /* Bit 0 specifically */
+        ctrl->error_count = (__R31 & 0x20) >> 5;  /* Bit 5 specifically */
+
+        /* After first iteration, overwrite debug fields with runtime values */
+        if (loop_count++ > 0) {
+            ctrl->overrun_count = __R31 & 0xFF;  /* Lower 8 bits of __R31 */
+            ctrl->status = 1;  /* Running */
+        }
 
         /* Wait for GPIO LOW (signal present) - matches Go's trigger condition */
         if (read_gpio() == 0) {
@@ -504,13 +521,23 @@ void main(void) {
     /* Enable OCP master port - allows PRU to access peripheral registers like GPIO */
     CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
 
+    /* Configure GPI mode for PRU0/PRU1 - direct connect mode (GPI pins -> __R31) */
+    uint32_t gpcfg0_before = CT_CFG.GPCFG0;  /* Read current GPCFG0 value */
+    uint32_t gpcfg1_before = CT_CFG.GPCFG1;  /* Read current GPCFG1 value */
+
+    CT_CFG.GPCFG0 = 0x0000;  /* PRU0: Direct connect mode, 16-bit parallel capture disabled */
+    CT_CFG.GPCFG1 = 0x0000;  /* PRU1: Direct connect mode, 16-bit parallel capture disabled */
+
+    uint32_t gpcfg0_after = CT_CFG.GPCFG0;   /* Verify GPCFG0 */
+    uint32_t gpcfg1_after = CT_CFG.GPCFG1;   /* Verify GPCFG1 */
+
     /* Initialize control block */
     ctrl->write_index = 0;
     ctrl->read_index = 0;
     ctrl->event_count = 0;
     ctrl->error_count = 0;
-    ctrl->overrun_count = 0;
-    ctrl->status = 1;  /* Running */
+    ctrl->overrun_count = (gpcfg0_before << 16) | gpcfg1_before;   /* DEBUG: Store initial values */
+    ctrl->status = (gpcfg0_after << 16) | gpcfg1_after;            /* DEBUG: Store final values */
 
     /* Initialize debug structure - clear any stale data */
     debug->valid = 0;

@@ -37,12 +37,21 @@ OBJECT := $(GEN_DIR)/pru0_ir_detector.obj
 # Output firmware
 TARGET := $(GEN_DIR)/pru0_ir_detector.out
 
+# Test firmware
+TEST_SOURCE := test_r31.c
+TEST_OBJECT := $(GEN_DIR)/test_r31.obj
+TEST_TARGET := $(GEN_DIR)/test_r31.out
+
 # Phony targets
-.PHONY: all clean install help
+.PHONY: all clean install help test
 
 # Default target
 all: $(GEN_DIR) $(TARGET)
 	@echo "PRU firmware build complete: $(TARGET)"
+
+# Test target
+test: $(GEN_DIR) $(TEST_TARGET)
+	@echo "Test firmware build complete: $(TEST_TARGET)"
 
 # Create output directory
 $(GEN_DIR):
@@ -57,6 +66,16 @@ $(OBJECT): $(SOURCE) | $(GEN_DIR)
 $(TARGET): $(OBJECT) $(LDFILE)
 	@echo "Linking PRU firmware..."
 	$(LD) $(CFLAGS) -z $(LIB_INCLUDE) $(LFLAGS) -o $(TARGET) $(OBJECT) -m $(GEN_DIR)/$(basename $(notdir $(SOURCE))).map $(LDFILE) --library=libc.a
+
+# Test firmware compilation
+$(TEST_OBJECT): $(TEST_SOURCE) | $(GEN_DIR)
+	@echo "Compiling test PRU firmware..."
+	$(CC) $(INCLUDE) $(CFLAGS) -c $(TEST_SOURCE) -o $(TEST_OBJECT)
+
+# Test firmware linking
+$(TEST_TARGET): $(TEST_OBJECT) $(LDFILE)
+	@echo "Linking test PRU firmware..."
+	$(LD) $(CFLAGS) -z $(LIB_INCLUDE) $(LFLAGS) -o $(TEST_TARGET) $(TEST_OBJECT) -m $(GEN_DIR)/$(basename $(notdir $(TEST_SOURCE))).map $(LDFILE) --library=libc.a
 
 # Clean build artifacts
 clean:
