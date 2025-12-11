@@ -17,7 +17,7 @@ enable_uboot_overlays=1
 ###
 ###Additional custom capes
 #uboot_overlay_addr4=custom-pins.dtbo
-uboot_overlay_addr4=custom-pins.dtbo
+#uboot_overlay_addr4=custom-pins.dtbo
 uboot_overlay_addr5=AM335X-PRU-RPROC-PRUCAPE-00A0.dtbo
 #uboot_overlay_addr5=<file5>.dtbo
 #uboot_overlay_addr6=<file6>.dtbo
@@ -34,7 +34,7 @@ disable_uboot_overlay_audio=1
 #disable_uboot_overlay_adc=1
 ###
 ###Cape Universal Enable
-#enable_uboot_cape_universal=1
+enable_uboot_cape_universal=1
 ###
 ###Debug: disable uboot autoload of Cape
 #disable_uboot_overlay_addr0=1

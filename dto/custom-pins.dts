@@ -12,9 +12,7 @@
         "P9.14", "ehrpwm1A",
         "P9.16", "ehrpwm1B",
         "P8.13", "ehrpwm2B",
-        "P8.19", "ehrpwm2A",
-        /* IR receiver GPIO (currently PRU mode, but reserving) */
-        "P9.27";
+        "P8.19", "ehrpwm2A";
 
     fragment@0 {
         target-path = "/chosen";
@@ -41,36 +39,18 @@
                     0x020 0x04  /* P8_19: gpmc_ad8.ehrpwm2A, MODE 4 */
                 >;
             };
-
-            pru_pins: pinmux_pru_pins {
-                pinctrl-single,pins = <
-                    /* P9_27: PRU0 input bit 5 for IR receiver - MODE 5 (PRU) */
-                    0x1A4 0x35  /* mcasp0_fsr.pr1_pru0_pru_r31_5, INPUT | PULLUP | MODE5 */
-
-                    /* P9_40: AIN1 - Analog input, no pull */
-                    0x1B8 0x27  /* xdma_event_intr2.gpio0_21, INPUT | MODE7 for ADC */
-                >;
-            };
-        };
-    };
-
-    fragment@2 {
-        target = <&pruss>;
-        __overlay__ {
-            pinctrl-names = "default";
-            pinctrl-0 = <&pru_pins>;
         };
     };
 
     /* Enable PWM subsystems for LED control */
-    fragment@3 {
+    fragment@2 {
         target = <&epwmss1>;
         __overlay__ {
             status = "okay";
         };
     };
 
-    fragment@4 {
+    fragment@3 {
         target = <&ehrpwm1>;
         __overlay__ {
             pinctrl-names = "default";
@@ -79,14 +59,14 @@
         };
     };
 
-    fragment@5 {
+    fragment@4 {
         target = <&epwmss2>;
         __overlay__ {
             status = "okay";
         };
     };
 
-    fragment@6 {
+    fragment@5 {
         target = <&ehrpwm2>;
         __overlay__ {
             pinctrl-names = "default";
