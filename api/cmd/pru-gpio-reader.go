@@ -52,8 +52,8 @@ func main() {
 	fmt.Printf("✓ Successfully mapped PRU shared memory at 0x%X\n", pruSharedMemAddr)
 	fmt.Println("")
 
-	// Get pointer to GPIO raw data
-	gpioData := (*gpioRawData)(unsafe.Pointer(&mem[gpioRawDataOffset]))
+	// Get pointer to GPIO raw data - use proper pointer arithmetic for alignment
+	gpioData := (*gpioRawData)(unsafe.Pointer(uintptr(unsafe.Pointer(&mem[0])) + uintptr(gpioRawDataOffset)))
 
 	fmt.Printf("Capture complete: %v\n", gpioData.Complete != 0)
 	fmt.Printf("Sample count: %d\n", gpioData.SampleCount)
@@ -64,9 +64,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Display full GPIO register value for pin verification
-	fmt.Printf("DEBUG: First GPIO DATAIN register value: 0x%08X\n", gpioData.FirstFullRegisterValue)
-	fmt.Printf("  Bit 20 (our target): %d\n", (gpioData.FirstFullRegisterValue>>20)&1)
+	// Display full __R31 register value for pin verification
+	fmt.Printf("DEBUG: First __R31 register value: 0x%08X\n", gpioData.FirstFullRegisterValue)
+	fmt.Printf("  Bit 5 (P9_27 PRU input): %d\n", (gpioData.FirstFullRegisterValue>>5)&1)
 	fmt.Printf("  All 32 bits: %032b\n", gpioData.FirstFullRegisterValue)
 	fmt.Println("")
 

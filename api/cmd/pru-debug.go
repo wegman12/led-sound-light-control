@@ -54,8 +54,8 @@ func main() {
 	fmt.Printf("✓ Successfully mapped PRU shared memory at 0x%X\n", pruSharedMemAddr)
 	fmt.Println("")
 
-	// Get pointer to control block
-	controlBlock := (*pruControlBlock)(unsafe.Pointer(&mem[controlBlockOffset]))
+	// Get pointer to control block - use proper pointer arithmetic for alignment
+	controlBlock := (*pruControlBlock)(unsafe.Pointer(uintptr(unsafe.Pointer(&mem[0])) + uintptr(controlBlockOffset)))
 
 	fmt.Println("Monitoring PRU Control Block:")
 	fmt.Println("Time       | write | read | events | errors | overrun | status  | status_hex")

@@ -58,8 +58,8 @@ func main() {
 	fmt.Printf("✓ Successfully mapped PRU shared memory at 0x%X\n", pruSharedMemAddr)
 	fmt.Println("")
 
-	// Get pointer to timing data
-	timing := (*timingData)(unsafe.Pointer(&mem[timingDataOffset]))
+	// Get pointer to timing data - use proper pointer arithmetic for alignment
+	timing := (*timingData)(unsafe.Pointer(uintptr(unsafe.Pointer(&mem[0])) + uintptr(timingDataOffset)))
 
 	fmt.Printf("Timing capture complete: %v\n", timing.Complete != 0)
 	fmt.Printf("Sample count: %d\n", timing.SampleCount)

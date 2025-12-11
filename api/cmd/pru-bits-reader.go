@@ -52,8 +52,8 @@ func main() {
 	fmt.Printf("✓ Successfully mapped PRU shared memory at 0x%X\n", pruSharedMemAddr)
 	fmt.Println("")
 
-	// Get pointer to debug bits data
-	debugData := (*debugBitsData)(unsafe.Pointer(&mem[debugBitsOffset]))
+	// Get pointer to debug bits data - use proper pointer arithmetic for alignment
+	debugData := (*debugBitsData)(unsafe.Pointer(uintptr(unsafe.Pointer(&mem[0])) + uintptr(debugBitsOffset)))
 
 	if debugData.Valid == 0 {
 		fmt.Println("No captured bits available yet. Press an IR button to capture data.")
