@@ -2,6 +2,10 @@
 /plugin/;
 
 / {
+    compatible = "ti,beaglebone", "ti,beaglebone-black";
+    part-number = "custom-pins";
+    version = "00A0";
+
     fragment@0 {
         target-path = "/chosen";
         __overlay__ {
@@ -14,13 +18,23 @@
     fragment@1 {
         target = <&am33xx_pinmux>;
         __overlay__ {
-            pinctrl-single,pins = <
-                /* P9_31: PRU0 input bit 0 for IR receiver - MODE 5 (PRU) */
-                0x190 0x36  /* mcasp0_aclkx.pr1_pru0_pru_r31_0, INPUT | PULLUP | MODE6 */
+            custom_pins: pinmux_custom_pins {
+                pinctrl-single,pins = <
+                    /* P9_27: PRU0 input bit 5 for IR receiver - MODE 5 (PRU) */
+                    0x1A4 0x35  /* mcasp0_fsr.pr1_pru0_pru_r31_5, INPUT | PULLUP | MODE5 */
 
-                /* P9_40: AIN1 - Analog input, no pull */
-                0x1B8 0x27  /* xdma_event_intr2.gpio0_21, INPUT | MODE7 for ADC */
-            >;
+                    /* P9_40: AIN1 - Analog input, no pull */
+                    0x1B8 0x27  /* xdma_event_intr2.gpio0_21, INPUT | MODE7 for ADC */
+                >;
+            };
+        };
+    };
+
+    fragment@2 {
+        target = <&pruss>;
+        __overlay__ {
+            pinctrl-names = "default";
+            pinctrl-0 = <&custom_pins>;
         };
     };
 };
