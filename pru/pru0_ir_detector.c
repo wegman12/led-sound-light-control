@@ -377,7 +377,7 @@ static int read_ir_packet(void) {
     for (i = 1; i < IR_PACKET_LENGTH; i++) {
 
         /* Wait for GPIO to go LOW (end of HIGH space period) */
-        wait_for_state(0, MAX_BIT_WAIT, &timed_out);
+        uint32_t low_cycles = measure_state_duration(1, MAX_BIT_WAIT, &timed_out);
         if (timed_out) {
             ctrl->event_count = 0xFFFC;
             ctrl->overrun_count = i;
@@ -385,7 +385,7 @@ static int read_ir_packet(void) {
         }
 
         /* Measure how long GPIO STAYS LOW (the mark/pulse duration) */
-        uint32_t low_cycles = measure_state_duration(0, MAX_BIT_WAIT, &timed_out);
+        wait_for_state(1, MAX_BIT_WAIT, &timed_out);
         if (timed_out) {
             ctrl->event_count = 0xFFFB;
             ctrl->overrun_count = i;
@@ -404,12 +404,6 @@ static int read_ir_packet(void) {
         debug->bits[i] = bits[i];
         debug->durations[i] = durations[i];
     }
-
-    /* Test pattern to verify struct alignment - write known values */
-    // debug->durations[0] = 0x11111111;  /* 286331153 */
-    // debug->durations[1] = 0x22222222;  /* 572662306 */
-    // debug->durations[2] = 0x33333333;  /* 858993459 */
-    // debug->durations[3] = 0x44444444;  /* 1145324612 */
 
     /* Mark debug data as valid */
     debug->valid = 1;
@@ -430,11 +424,6 @@ static int read_ir_packet(void) {
         debug->error_code = 0xFFDD;
         return -1;
     }               /* SEPARATOR (bits 9-16) */
-    if (bits[32] != 1) {
-
-        ctrl->event_count = 0xFFC;
-        return -1;
-    }                        /* STOP bit */
 
     /* Match against known button codes */
     return match_button_code(bits);
