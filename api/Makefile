@@ -23,7 +23,7 @@ DEPLOY_PATH=~/led-sound-light-control/
 BBB_BINARY=$(BINARY_NAME)-bbb
 
 # PRU Configuration
-PRU_DIR=../pru
+PRU_DIR=../pru/remote
 PRU_FIRMWARE=$(PRU_DIR)/gen/pru0_ir_detector.out
 PRU_INSTALL_PATH=/lib/firmware/am335x-pru0-fw
 
@@ -150,7 +150,7 @@ deploy-pru:
 	@echo "Deploying PRU firmware to $(DEPLOY_HOST)..."
 	@echo "Copying PRU source files to BeagleBone..."
 	@ssh $(DEPLOY_HOST) "mkdir -p ~/led-sound-light-control/pru"
-	@scp -r $(PRU_DIR)/*.c $(PRU_DIR)/*.h $(PRU_DIR)/*.cmd $(PRU_DIR)/Makefile $(DEPLOY_HOST):~/led-sound-light-control/pru/
+	@scp -r $(PRU_DIR)/*.c $(PRU_DIR)/*.h $(PRU_DIR)/*.cmd $(PRU_DIR)/Makefile $(PRU_DIR)/README.md $(DEPLOY_HOST):~/led-sound-light-control/pru/ 2>/dev/null || true
 	@echo "Building PRU firmware on BeagleBone..."
 	@ssh $(DEPLOY_HOST) "cd ~/led-sound-light-control/pru && make"
 	@echo "Installing and loading firmware..."
