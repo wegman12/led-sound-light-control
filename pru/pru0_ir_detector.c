@@ -65,6 +65,7 @@ struct my_resource_table {
 #define THRESHOLD_1MS       200000        /* 1000 μs = 200,000 cycles */
 #define MAX_BIT_WAIT        80000000     /* 40 ms = 80M cycles */
 #define MAX_PACKET_DURATION 200000000    /* 100 ms = .2B cycles */
+#define COOLDOWN_AFTER_SUCCESS 40000000  /* 200 ms cooldown after successful detection */
 
 /* Protocol Constants */
 #define IR_PACKET_LENGTH    34
@@ -429,12 +430,17 @@ static void run_ir_detection_loop(void) {
             if (button_code >= 0) {
                 /* Valid button detected */
                 write_button_event((uint8_t)button_code);
+
+                /* Wait for GPIO to return HIGH (idle) */
+                wait_for_state(1, MAX_PACKET_DURATION, &timed_out);
+
+                __delay_cycles(COOLDOWN_AFTER_SUCCESS);
             } else {
                 ctrl->error_count++;
-            }
 
-            /* Wait for GPIO to return HIGH (idle) before looking for next packet */
-            wait_for_state(1, MAX_PACKET_DURATION, &timed_out);
+                /* Wait for GPIO to return HIGH (idle) before looking for next packet */
+                wait_for_state(1, MAX_PACKET_DURATION, &timed_out);
+            }
         }
 
         /* 100ns delay between main loop iterations for stable GPIO reads */
