@@ -324,18 +324,6 @@ static int read_ir_packet(void) {
     int timed_out;
     uint32_t packet_start = get_cycles();
 
-    /* Only clear debug data if not already valid (don't overwrite captured data) */
-    if (debug->valid == 0) {
-        debug->error_code = 0;
-        /* Initialize bits array to known pattern for debugging */
-        for (i = 0; i < IR_PACKET_LENGTH; i++) {
-            debug->bits[i] = 255;  /* Fill with 0xFF to detect if it gets overwritten */
-        }
-    } else {
-        /* Already have captured data, skip this packet */
-        return -1;
-    }
-
     /* GPIO is already LOW when this function is called (detected in main loop) */
     /* NEC protocol: 9ms LOW leader + 4.5ms HIGH space + data bits */
     /* We're somewhere in the 9ms leader - wait for it to finish (up to 10ms timeout) */
@@ -412,8 +400,6 @@ static int read_ir_packet(void) {
     debug->durations[2] = 0x33333333;  /* 858993459 */
     debug->durations[3] = 0x44444444;  /* 1145324612 */
 
-    debug->valid = 1;
-
     /* Validate protocol structure */
     if (bits[0] != 1) {
         ctrl->event_count = 0xFFDF;
@@ -480,16 +466,6 @@ static void run_ir_detection_loop(void) {
 
     /* Main IR detection loop */
     while (1) {
-        /* DEBUG: Continuously write __R31 register value to event_count for monitoring */
-        ctrl->event_count = __R31;
-        ctrl->error_count = (__R31 & 0x20) >> 5;  /* Bit 5 specifically */
-
-        /* After first iteration, overwrite debug fields with runtime values */
-        if (loop_count++ > 0) {
-            ctrl->overrun_count = __R31 & 0xFF;  /* Lower 8 bits of __R31 */
-            ctrl->status = 1;  /* Running */
-        }
-
         /* Wait for GPIO LOW (signal present) - matches Go's trigger condition */
         if (read_gpio() == 0) {
             /* Attempt to read and decode the IR packet */

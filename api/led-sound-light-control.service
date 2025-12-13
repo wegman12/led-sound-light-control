@@ -1,0 +1,21 @@
+[Unit]
+Description=LED Sound Light Control API Server
+After=network.target pwm-setup.service
+Wants=pwm-setup.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/kevin/led-sound-light-control
+ExecStart=/home/kevin/led-sound-light-control/led-sound-light-control serve --port 8080
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening (while still allowing /dev/mem access)
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

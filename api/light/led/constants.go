@@ -28,19 +28,19 @@ func LookupColor(colorName string) Color {
 
 var (
 	RedConfig = ledConfig{
-		chipId: 2,
+		chipId: 7,
 		pwmId:  1,
 	}
 	BlueConfig = ledConfig{
-		chipId: 0,
+		chipId: 5,
 		pwmId:  0,
 	}
 	GreenConfig = ledConfig{
-		chipId: 2,
+		chipId: 7,
 		pwmId:  0,
 	}
 	WhiteConfig = ledConfig{
-		chipId: 0,
+		chipId: 5,
 		pwmId:  1,
 	}
 )
