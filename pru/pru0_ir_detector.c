@@ -135,9 +135,8 @@ static inline uint32_t read_gpio(void) {
 
 /* PRU Cycle Counter Functions (similar to simpPRU approach) */
 static inline void start_counter(void) {
-    /* Reset counter to 0 by disabling and re-enabling */
-    PRU0_CTRL.CTRL_bit.CTR_EN = 0;
-    PRU0_CTRL.CTRL_bit.CTR_EN = 1;
+    /* Reset counter to 0 by writing directly to CYCLE register */
+    PRU0_CTRL.CYCLE = 0;
 }
 
 static inline uint32_t read_counter(void) {
@@ -340,6 +339,10 @@ static int read_ir_packet(void) {
     int i;
     int timed_out;
 
+    /* DEBUG: Check if counter is running at start of each detection */
+    uint32_t counter_check = read_counter();
+    ctrl->overrun_count = counter_check;  /* Write to overrun field for debugging */
+
     /* GPIO is already LOW when this function is called (detected in main loop) */
     /* NEC protocol: 9ms LOW leader + 4.5ms HIGH space + data bits */
     /* We're somewhere in the 9ms leader - wait for it to finish (up to 10ms timeout) */
@@ -471,8 +474,10 @@ static void run_ir_detection_loop(void) {
     while (1) {
         /* Wait for GPIO LOW (signal present) - matches Go's trigger condition */
         if (read_gpio() == 0) {
+            /* Reset counter before each detection to prevent hitting max value */
+            start_counter();
+
             /* Attempt to read and decode the IR packet */
-            /* Counter runs continuously - subtraction handles uint32 wraparound correctly */
             button_code = read_ir_packet();
 
             if (button_code >= 0) {
