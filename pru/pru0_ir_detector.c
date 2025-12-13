@@ -56,25 +56,18 @@ struct my_resource_table {
 #define BUTTON_RING_BUFFER  0x00000000  /* Offset 0: Ring buffer */
 #define CONTROL_BLOCK       0x00001000  /* Offset 4KB: Control structure */
 #define RING_BUFFER_SIZE    256         /* 256 events */
-#define TIMING_DATA_OFFSET  0x00002000  /* Offset 8KB: Raw timing data */
-#define MAX_TIMING_SAMPLES  512         /* Maximum transitions to capture */
-#define GPIO_RAW_DATA_OFFSET 0x00002000 /* Offset 8KB: Raw GPIO readings */
-#define MAX_GPIO_SAMPLES    8192        /* 8K samples of raw GPIO data */
 
 /* PRU Clock: 200 MHz = 5 ns per cycle */
 #define PRU_CLOCK_HZ        200000000
 #define CYCLES_PER_US       200         /* 200 cycles per microsecond */
 
 /* Timing Thresholds (in cycles) */
-#define THRESHOLD_1MS       200000      /* 1000 μs = 200,000 cycles */
-#define MAX_BIT_WAIT        800000000     /* 400 ms = 40M cycles */
-#define MAX_PACKET_DURATION 2000000000    /* 1000 ms = 200M cycles */
-#define IDLE_DELAY          1000        /* 5 μs between checks */
-#define TIMEOUT_1_SECOND    200000000   /* 1 second = 200M cycles */
-#define DEBOUNCE_CYCLES     2000        /* 10 μs debounce = 2,000 cycles */
+#define THRESHOLD_1MS       200000        /* 1000 μs = 200,000 cycles */
+#define MAX_BIT_WAIT        80000000     /* 40 ms = 80M cycles */
+#define MAX_PACKET_DURATION 200000000    /* 100 ms = .2B cycles */
 
 /* Protocol Constants */
-#define IR_PACKET_LENGTH    33
+#define IR_PACKET_LENGTH    34
 #define NUM_BUTTON_CODES    44
 
 /* Control Block Structure */
@@ -84,7 +77,6 @@ struct control_block {
     volatile uint32_t event_count;
     volatile uint32_t error_count;
     volatile uint32_t overrun_count;
-    volatile uint32_t status;
 };
 
 /* Button Event Structure (8 bytes) */
@@ -95,36 +87,6 @@ struct button_event {
     uint32_t timestamp;
 };
 
-/* Timing Sample Structure (8 bytes) */
-struct timing_sample {
-    uint32_t state;       /* 0 or 1 */
-    uint32_t duration;    /* Duration in cycles */
-};
-
-/* Timing Capture Structure */
-struct timing_data {
-    volatile uint32_t sample_count;
-    volatile uint32_t complete;
-    struct timing_sample samples[MAX_TIMING_SAMPLES];
-};
-
-/* Raw GPIO Data Structure - Simple byte array for raw readings */
-struct gpio_raw_data {
-    volatile uint32_t sample_count;
-    volatile uint32_t complete;
-    volatile uint32_t first_full_register_value;  /* Store first full 32-bit read for debugging */
-    volatile uint8_t samples[MAX_GPIO_SAMPLES];  /* Each byte is a GPIO reading (0 or 1) */
-};
-
-/* Debug structure for captured IR bits - at offset 0x1100 (after control block) */
-#define DEBUG_BITS_OFFSET 0x00001100
-struct debug_bits_data {
-    volatile uint32_t valid;          /* 1 if data is valid, 0 otherwise */
-    volatile uint32_t error_code;     /* Error code if decoding failed */
-    volatile uint8_t bits[36];        /* The 33 bits that were captured + 3 padding bytes for alignment */
-    volatile uint32_t durations[33];  /* LOW pulse durations in cycles for each bit */
-};
-
 /* PRU Direct GPIO Access via __R31 register */
 /* P9_27 maps to PRU0 bit 5 - much faster and more reliable than memory-mapped GPIO */
 /* No volatile tricks needed - __R31 is a hardware register designed for this */
@@ -133,8 +95,8 @@ static inline uint32_t read_gpio(void) {
     return (__R31 & 0x20) >> 5;
 }
 
-/* PRU Cycle Counter Functions (similar to simpPRU approach) */
-static inline void start_counter(void) {
+/* PRU Cycle Counter Functions */
+static inline void reset_counter(void) {
     /* Reset counter to 0 by writing directly to CYCLE register */
     PRU0_CTRL.CYCLE = 0;
 }
@@ -143,105 +105,96 @@ static inline uint32_t read_counter(void) {
     return PRU0_CTRL.CYCLE;
 }
 
-static inline void stop_counter(void) {
-    PRU0_CTRL.CTRL_bit.CTR_EN = 0;
-}
-
-/* Legacy function for compatibility - now just wraps read_counter */
-static inline uint32_t get_cycles(void) {
-    return read_counter();
-}
-
 /* Button Code Lookup Table (from api/remote/codes.go) */
 static const uint8_t button_codes[NUM_BUTTON_CODES][IR_PACKET_LENGTH] = {
     /* PowerButtonType (0) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1},
     /* PauseButtonType (1) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1},
     /* BrightnessDownButtonType (2) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1},
     /* BrightnessUpButtonType (3) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1},
     /* RedButtonType (4) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1},
     /* GreenButtonType (5) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1},
     /* BlueButtonType (6) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1},
     /* WhiteButtonType (7) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1},
     /* PinkButtonType (8) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1},
     /* LightBlueButtonType (9) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1},
     /* LightGreenButtonType (10) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1},
     /* OrangeButtonType (11) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1},
     /* LightOrangeButtonType (12) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1},
     /* GreenBlueButtonType (13) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1},
     /* IndigoButtonType (14) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1},
     /* LightPinkButtonType (15) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1},
     /* SkyBlueButtonType (16) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1},
     /* VioletButtonType (17) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1},
     /* TealButtonType (18) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1},
     /* GoldButtonType (19) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1},
     /* YellowButtonType (20) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 1},
     /* DarkTealButtonType (21) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1},
     /* PurpleButtonType (22) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1},
     /* LightSkyBlueButtonType (23) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1},
     /* QuickButtonType (24) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1},
     /* BlueUpButtonType (25) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1},
     /* GreenUpButtonType (26) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1},
     /* RedUpButtonType (27) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1},
     /* RedDownButtonType (28) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1},
     /* GreenDownButtonType (29) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1},
     /* BlueDownButtonType (30) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1},
     /* SlowButtonType (31) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1},
     /* AutoButtonType (32) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1},
     /* Diy3ButtonType (33) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 1, 1},
     /* Diy2ButtonType (34) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1},
     /* Diy1ButtonType (35) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1},
     /* Diy4ButtonType (36) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1},
     /* Diy5ButtonType (37) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1},
     /* Diy6ButtonType (38) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1},
     /* FlashButtonType (39) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1},
     /* Fade7ButtonType (40) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1},
     /* Fade3ButtonType (41) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1},
     /* Jump7ButtonType (42) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1},
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1},
     /* Jump3ButtonType (43) */
-    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1}
+    {1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1}
 };
 
 /* Helper Functions */
@@ -266,8 +219,8 @@ static int all_ones(const uint8_t *arr, int count) {
 static uint32_t wait_for_state(uint32_t target_state, uint32_t max_cycles, int *timed_out) {
     uint32_t start = read_counter();
     uint32_t elapsed;
-    /* 800ns delay between reads to match working raw GPIO test (160 cycles @ 200MHz) */
-    __delay_cycles(160);
+    /* 100ns delay between reads to match working raw GPIO test (160 cycles @ 200MHz) */
+    __delay_cycles(20);
 
     while (read_gpio() != target_state) {
         elapsed = read_counter() - start;
@@ -275,8 +228,8 @@ static uint32_t wait_for_state(uint32_t target_state, uint32_t max_cycles, int *
             *timed_out = 1;
             return elapsed;
         }
-        /* 800ns delay between reads to match working raw GPIO test (160 cycles @ 200MHz) */
-        __delay_cycles(160);
+        /* 100ns delay between reads to match working raw GPIO test (160 cycles @ 200MHz) */
+        __delay_cycles(20);
     }
 
     *timed_out = 0;
@@ -292,7 +245,7 @@ static uint32_t measure_state_duration(uint32_t current_state, uint32_t max_cycl
     /* Critical: Delay before first read to allow signal to stabilize after transition */
     /* Without this, we get metastability issues reading too soon after state change */
     /* Timer already started, so this delay is included in the measurement (correct) */
-    __delay_cycles(160);
+    __delay_cycles(20);
 
     while (read_gpio() == current_state) {  /* Loop WHILE in current state */
         elapsed = read_counter() - start;
@@ -301,7 +254,7 @@ static uint32_t measure_state_duration(uint32_t current_state, uint32_t max_cycl
             return elapsed;
         }
         /* 800ns delay between reads */
-        __delay_cycles(160);
+        __delay_cycles(20);
     }
 
     *timed_out = 0;
@@ -331,102 +284,66 @@ static int match_button_code(const uint8_t bits[IR_PACKET_LENGTH]) {
     return -1;  /* No match */
 }
 
-/* Read and decode 33-bit IR packet */
+/* Read and decode 34-bit IR packet */
 static int read_ir_packet(void) {
     struct control_block *ctrl = (struct control_block *)(PRU_SHARED_MEM + CONTROL_BLOCK);
-    struct debug_bits_data *debug = (struct debug_bits_data *)(PRU_SHARED_MEM + DEBUG_BITS_OFFSET);
     uint8_t bits[IR_PACKET_LENGTH];
+    uint32_t durations[IR_PACKET_LENGTH];
     int i;
     int timed_out;
-
-    /* DEBUG: Check if counter is running at start of each detection */
-    uint32_t counter_check = read_counter();
-    ctrl->overrun_count = counter_check;  /* Write to overrun field for debugging */
 
     /* GPIO is already LOW when this function is called (detected in main loop) */
     /* NEC protocol: 9ms LOW leader + 4.5ms HIGH space + data bits */
     /* We're somewhere in the 9ms leader - wait for it to finish (up to 10ms timeout) */
     wait_for_state(1, 2000000, &timed_out);  /* 10ms = 2M cycles */
     if (timed_out) {
-        ctrl->event_count = 0xFFFF;  /* Leader LOW timeout */
-        ctrl->overrun_count = 0;
         return -1;
     }
 
     /* Now wait for the 4.5ms HIGH space to complete (up to 6ms timeout) */
     wait_for_state(0, 1200000, &timed_out);  /* 6ms = 1.2M cycles */
     if (timed_out) {
-        ctrl->event_count = 0xFFFE;  /* Leader HIGH timeout */
-        ctrl->overrun_count = 0;
         return -1;
     }
 
     /* GPIO is now LOW - we've skipped measuring the leader HIGH space */
     /* That leader HIGH space IS the START bit (always long = 1) */
     bits[0] = 1;  /* START bit - we use it for synchronization but don't measure it */
-    uint32_t durations[IR_PACKET_LENGTH];
-    durations[0] = 0;  /* No duration measured for START bit */
 
     /* Wait for this first LOW pulse to complete, positioning us for the loop */
     wait_for_state(1, MAX_BIT_WAIT, &timed_out);
     if (timed_out) {
-        ctrl->event_count = 0xFFFD;  /* First bit LOW timeout */
-        ctrl->overrun_count = 0;
         return -1;
     }
 
     /* Now read the remaining 32 bits (bits 1-32) */
-    /* Note: Removed packet timeout check since counter resets on each measurement */
     for (i = 1; i < IR_PACKET_LENGTH; i++) {
-
-        /* Wait for GPIO to go LOW (end of HIGH space period) */
-        uint32_t low_cycles = measure_state_duration(1, MAX_BIT_WAIT, &timed_out);
+        /* Measure HIGH space duration */
+        uint32_t high_cycles = measure_state_duration(1, MAX_BIT_WAIT, &timed_out);
         if (timed_out) {
-            ctrl->event_count = 0xFFFC;
-            ctrl->overrun_count = i;
             return -1;
         }
 
-        /* Measure how long GPIO STAYS LOW (the mark/pulse duration) */
+        /* Wait for GPIO to return HIGH (end of LOW pulse) */
         wait_for_state(1, MAX_BIT_WAIT, &timed_out);
         if (timed_out) {
-            ctrl->event_count = 0xFFFB;
-            ctrl->overrun_count = i;
             return -1;
         }
 
-        /* Store duration for debugging */
-        durations[i] = low_cycles;
-
-        /* Decode based on LOW duration (mark) - matches Go code behavior */
-        bits[i] = decode_bit(low_cycles);
+        /* Store duration and decode bit */
+        bits[i] = decode_bit(high_cycles);
     }
-
-    /* Copy bits and durations to debug structure for inspection */
-    for (i = 0; i < IR_PACKET_LENGTH; i++) {
-        debug->bits[i] = bits[i];
-        debug->durations[i] = durations[i];
-    }
-
-    /* Mark debug data as valid */
-    debug->valid = 1;
 
     /* Validate protocol structure */
     if (bits[0] != 1) {
-        ctrl->event_count = 0xFFDF;
-        debug->error_code = 0xFFDF;
         return -1;
-    }                          /* START bit */
+    }
     if (!all_zeros(&bits[1], 8)) {
-        ctrl->event_count = 0xFFDE;
-        debug->error_code = 0xFFDE;
         return -1;
-    }               /* HEADER (bits 1-8) */
+    }
     if (!all_ones(&bits[9], 8)) {
-        ctrl->event_count = 0xFFDD;
-        debug->error_code = 0xFFDD;
         return -1;
-    }               /* SEPARATOR (bits 9-16) */
+    }
 
     /* Match against known button codes */
     return match_button_code(bits);
@@ -447,7 +364,7 @@ static void write_button_event(uint8_t button_type) {
 
     /* Write event */
     events[ctrl->write_index].button_type = button_type;
-    events[ctrl->write_index].timestamp = get_cycles();
+    events[ctrl->write_index].timestamp = read_counter();
     events[ctrl->write_index].reserved1 = 0;
     events[ctrl->write_index].reserved2 = 0;
 
@@ -468,14 +385,14 @@ static void run_ir_detection_loop(void) {
     int loop_count = 0;
 
     /* Small delay to let debug tool read initial GPCFG0 values */
-    __delay_cycles(2000000);  /* 10ms delay */
+    __delay_cycles(20);  /* 100ns delay */
 
     /* Main IR detection loop */
     while (1) {
         /* Wait for GPIO LOW (signal present) - matches Go's trigger condition */
         if (read_gpio() == 0) {
             /* Reset counter before each detection to prevent hitting max value */
-            start_counter();
+            reset_counter();
 
             /* Attempt to read and decode the IR packet */
             button_code = read_ir_packet();
@@ -500,29 +417,15 @@ static void run_ir_detection_loop(void) {
 /* Main function - IR Button Detection */
 void main(void) {
     struct control_block *ctrl = (struct control_block *)(PRU_SHARED_MEM + CONTROL_BLOCK);
-    struct debug_bits_data *debug = (struct debug_bits_data *)(PRU_SHARED_MEM + DEBUG_BITS_OFFSET);
-    int i;
 
     /* Enable PRU cycle counter - required for timing measurements */
     PRU0_CTRL.CTRL_bit.CTR_EN = 1;
 
-    /* Test if cycle counter is working */
-    start_counter();
-    __delay_cycles(10000);  /* 50 microsecond delay = 10,000 cycles */
-    uint32_t test_cycles_after_delay = read_counter();
-
-    /* Enable OCP master port - allows PRU to access peripheral registers like GPIO */
+    /* Enable OCP master port - allows PRU to access peripheral registers */
     CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
 
-    /* Configure GPI mode for PRU0/PRU1 - direct connect mode (GPI pins -> __R31) */
-    uint32_t gpcfg0_before = CT_CFG.GPCFG0;  /* Read current GPCFG0 value */
-    uint32_t gpcfg1_before = CT_CFG.GPCFG1;  /* Read current GPCFG1 value */
-
-    CT_CFG.GPCFG0 = 0x0000;  /* PRU0: Direct connect mode, 16-bit parallel capture disabled */
-    CT_CFG.GPCFG1 = 0x0000;  /* PRU1: Direct connect mode, 16-bit parallel capture disabled */
-
-    uint32_t gpcfg0_after = CT_CFG.GPCFG0;   /* Verify GPCFG0 */
-    uint32_t gpcfg1_after = CT_CFG.GPCFG1;   /* Verify GPCFG1 */
+    /* Configure GPI mode for PRU0 - direct connect mode (GPI pins -> __R31) */
+    CT_CFG.GPCFG0 = 0x0000;  /* Direct connect, 16-bit parallel capture disabled */
 
     /* Initialize control block */
     ctrl->write_index = 0;
@@ -530,17 +433,6 @@ void main(void) {
     ctrl->event_count = 0;
     ctrl->error_count = 0;
     ctrl->overrun_count = 0;
-    ctrl->status = test_cycles_after_delay;  /* DEBUG: Should be ~10000 if counter works */
-
-    /* Initialize debug structure - clear any stale data */
-    debug->valid = 0;
-    debug->error_code = 0;
-    for (i = 0; i < 36; i++) {
-        debug->bits[i] = 0;
-    }
-    for (i = 0; i < IR_PACKET_LENGTH; i++) {
-        debug->durations[i] = 0;
-    }
 
     /* Run the IR detection loop (never returns) */
     run_ir_detection_loop();
