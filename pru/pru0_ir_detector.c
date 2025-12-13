@@ -482,10 +482,8 @@ static void run_ir_detection_loop(void) {
     while (1) {
         /* Wait for GPIO LOW (signal present) - matches Go's trigger condition */
         if (read_gpio() == 0) {
-            /* Reset counter at start of IR signal detection to prevent overflow */
-            start_counter();
-
             /* Attempt to read and decode the IR packet */
+            /* Counter runs continuously - subtraction handles uint32 wraparound correctly */
             button_code = read_ir_packet();
 
             if (button_code >= 0) {
@@ -497,9 +495,6 @@ static void run_ir_detection_loop(void) {
 
             /* Wait for GPIO to return HIGH (idle) before looking for next packet */
             wait_for_state(1, MAX_PACKET_DURATION, &timed_out);
-
-            /* Stop counter after IR signal processing is complete */
-            stop_counter();
         }
 
         /* 100ns delay between main loop iterations for stable GPIO reads */
