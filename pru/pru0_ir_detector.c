@@ -77,7 +77,20 @@ struct control_block {
     volatile uint32_t event_count;
     volatile uint32_t error_count;
     volatile uint32_t overrun_count;
+    volatile uint32_t error_code;  /* Last error code for debugging */
 };
+
+/* Error Codes */
+#define ERROR_NONE              0x0000
+#define ERROR_LEADER_LOW        0x0001  /* Leader LOW pulse timeout */
+#define ERROR_LEADER_HIGH       0x0002  /* Leader HIGH space timeout */
+#define ERROR_FIRST_LOW         0x0003  /* First data LOW pulse timeout */
+#define ERROR_DATA_HIGH         0x0004  /* Data HIGH space timeout */
+#define ERROR_DATA_LOW          0x0005  /* Data LOW pulse timeout */
+#define ERROR_START_BIT         0x0006  /* START bit validation failed */
+#define ERROR_HEADER_BITS       0x0007  /* HEADER bits validation failed */
+#define ERROR_SEPARATOR_BITS    0x0008  /* SEPARATOR bits validation failed */
+#define ERROR_NO_MATCH          0x0009  /* No button code match */
 
 /* Button Event Structure (8 bytes) */
 struct button_event {
@@ -297,12 +310,14 @@ static int read_ir_packet(void) {
     /* We're somewhere in the 9ms leader - wait for it to finish (up to 10ms timeout) */
     wait_for_state(1, 2000000, &timed_out);  /* 10ms = 2M cycles */
     if (timed_out) {
+        ctrl->error_code = ERROR_LEADER_LOW;
         return -1;
     }
 
     /* Now wait for the 4.5ms HIGH space to complete (up to 6ms timeout) */
     wait_for_state(0, 1200000, &timed_out);  /* 6ms = 1.2M cycles */
     if (timed_out) {
+        ctrl->error_code = ERROR_LEADER_HIGH;
         return -1;
     }
 
@@ -313,6 +328,7 @@ static int read_ir_packet(void) {
     /* Wait for this first LOW pulse to complete, positioning us for the loop */
     wait_for_state(1, MAX_BIT_WAIT, &timed_out);
     if (timed_out) {
+        ctrl->error_code = ERROR_FIRST_LOW;
         return -1;
     }
 
@@ -321,12 +337,14 @@ static int read_ir_packet(void) {
         /* Measure HIGH space duration */
         uint32_t high_cycles = measure_state_duration(1, MAX_BIT_WAIT, &timed_out);
         if (timed_out) {
+            ctrl->error_code = ERROR_DATA_HIGH;
             return -1;
         }
 
         /* Wait for GPIO to return HIGH (end of LOW pulse) */
         wait_for_state(1, MAX_BIT_WAIT, &timed_out);
         if (timed_out) {
+            ctrl->error_code = ERROR_DATA_LOW;
             return -1;
         }
 
@@ -336,17 +354,28 @@ static int read_ir_packet(void) {
 
     /* Validate protocol structure */
     if (bits[0] != 1) {
+        ctrl->error_code = ERROR_START_BIT;
         return -1;
     }
     if (!all_zeros(&bits[1], 8)) {
+        ctrl->error_code = ERROR_HEADER_BITS;
         return -1;
     }
     if (!all_ones(&bits[9], 8)) {
+        ctrl->error_code = ERROR_SEPARATOR_BITS;
         return -1;
     }
 
     /* Match against known button codes */
-    return match_button_code(bits);
+    int button_code = match_button_code(bits);
+    if (button_code < 0) {
+        ctrl->error_code = ERROR_NO_MATCH;
+        return -1;
+    }
+
+    /* Success - clear error code */
+    ctrl->error_code = ERROR_NONE;
+    return button_code;
 }
 
 /* Write button event to ring buffer */
@@ -433,6 +462,7 @@ void main(void) {
     ctrl->event_count = 0;
     ctrl->error_count = 0;
     ctrl->overrun_count = 0;
+    ctrl->error_code = ERROR_NONE;
 
     /* Run the IR detection loop (never returns) */
     run_ir_detection_loop();

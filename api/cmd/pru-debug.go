@@ -20,7 +20,48 @@ type pruControlBlock struct {
 	EventCount   uint32
 	ErrorCount   uint32
 	OverrunCount uint32
-	Status       uint32
+	ErrorCode    uint32
+}
+
+// Error code constants (matching pru0_ir_detector.c)
+const (
+	ERROR_NONE           = 0x0000
+	ERROR_LEADER_LOW     = 0x0001
+	ERROR_LEADER_HIGH    = 0x0002
+	ERROR_FIRST_LOW      = 0x0003
+	ERROR_DATA_HIGH      = 0x0004
+	ERROR_DATA_LOW       = 0x0005
+	ERROR_START_BIT      = 0x0006
+	ERROR_HEADER_BITS    = 0x0007
+	ERROR_SEPARATOR_BITS = 0x0008
+	ERROR_NO_MATCH       = 0x0009
+)
+
+func errorCodeString(code uint32) string {
+	switch code {
+	case ERROR_NONE:
+		return "NONE"
+	case ERROR_LEADER_LOW:
+		return "LEADER_LOW"
+	case ERROR_LEADER_HIGH:
+		return "LEADER_HIGH"
+	case ERROR_FIRST_LOW:
+		return "FIRST_LOW"
+	case ERROR_DATA_HIGH:
+		return "DATA_HIGH"
+	case ERROR_DATA_LOW:
+		return "DATA_LOW"
+	case ERROR_START_BIT:
+		return "START_BIT"
+	case ERROR_HEADER_BITS:
+		return "HEADER_BITS"
+	case ERROR_SEPARATOR_BITS:
+		return "SEPARATOR_BITS"
+	case ERROR_NO_MATCH:
+		return "NO_MATCH"
+	default:
+		return fmt.Sprintf("UNKNOWN(0x%04X)", code)
+	}
 }
 
 func main() {
@@ -58,11 +99,12 @@ func main() {
 	controlBlock := (*pruControlBlock)(unsafe.Pointer(uintptr(unsafe.Pointer(&mem[0])) + uintptr(controlBlockOffset)))
 
 	fmt.Println("Monitoring PRU Control Block:")
-	fmt.Println("Time       | write | read | events | errors | overrun | status  | status_hex")
-	fmt.Println("-----------+-------+------+--------+--------+---------+---------+-----------")
+	fmt.Println("Time       | write | read | events | errors | overrun | error_code")
+	fmt.Println("-----------+-------+------+--------+--------+---------+-------------------")
 
-	lastStatus := uint32(0)
+	lastErrorCode := uint32(0)
 	lastEvents := uint32(0)
+	lastErrors := uint32(0)
 
 	for {
 		time.Sleep(500 * time.Millisecond)
@@ -72,25 +114,31 @@ func main() {
 		events := controlBlock.EventCount
 		errors := controlBlock.ErrorCount
 		overrun := controlBlock.OverrunCount
-		status := controlBlock.Status
+		errorCode := controlBlock.ErrorCode
 
 		timestamp := time.Now().Format("15:04:05")
 
 		// Highlight changes
-		statusStr := fmt.Sprintf("%d", status)
-		if status != lastStatus {
-			statusStr = fmt.Sprintf("\033[32m%d\033[0m", status)  // Green
+		errorCodeStr := errorCodeString(errorCode)
+		if errorCode != lastErrorCode {
+			errorCodeStr = fmt.Sprintf("\033[31m%s\033[0m", errorCodeStr)  // Red for error changes
 		}
 
 		eventsStr := fmt.Sprintf("%d", events)
 		if events != lastEvents {
-			eventsStr = fmt.Sprintf("\033[32m%d\033[0m", events)  // Green
+			eventsStr = fmt.Sprintf("\033[32m%d\033[0m", events)  // Green for new events
 		}
 
-		fmt.Printf("%s | %5d | %4d | %6s | %6d | %7d | %7s | 0x%08X\n",
-			timestamp, writeIdx, readIdx, eventsStr, errors, overrun, statusStr, status)
+		errorsStr := fmt.Sprintf("%d", errors)
+		if errors != lastErrors {
+			errorsStr = fmt.Sprintf("\033[33m%d\033[0m", errors)  // Yellow for new errors
+		}
 
-		lastStatus = status
+		fmt.Printf("%s | %5d | %4d | %6s | %6s | %7d | %s\n",
+			timestamp, writeIdx, readIdx, eventsStr, errorsStr, overrun, errorCodeStr)
+
+		lastErrorCode = errorCode
 		lastEvents = events
+		lastErrors = errors
 	}
 }
