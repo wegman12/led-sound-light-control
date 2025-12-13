@@ -121,7 +121,7 @@ struct gpio_raw_data {
 struct debug_bits_data {
     volatile uint32_t valid;          /* 1 if data is valid, 0 otherwise */
     volatile uint32_t error_code;     /* Error code if decoding failed */
-    volatile uint8_t bits[33];        /* The 33 bits that were captured */
+    volatile uint8_t bits[36];        /* The 33 bits that were captured + 3 padding bytes for alignment */
     volatile uint32_t durations[33];  /* LOW pulse durations in cycles for each bit */
 };
 
@@ -133,9 +133,24 @@ static inline uint32_t read_gpio(void) {
     return (__R31 & 0x20) >> 5;
 }
 
-/* PRU Cycle Counter Access */
-static inline uint32_t get_cycles(void) {
+/* PRU Cycle Counter Functions (similar to simpPRU approach) */
+static inline void start_counter(void) {
+    /* Reset counter to 0 by disabling and re-enabling */
+    PRU0_CTRL.CTRL_bit.CTR_EN = 0;
+    PRU0_CTRL.CTRL_bit.CTR_EN = 1;
+}
+
+static inline uint32_t read_counter(void) {
     return PRU0_CTRL.CYCLE;
+}
+
+static inline void stop_counter(void) {
+    PRU0_CTRL.CTRL_bit.CTR_EN = 0;
+}
+
+/* Legacy function for compatibility - now just wraps read_counter */
+static inline uint32_t get_cycles(void) {
+    return read_counter();
 }
 
 /* Button Code Lookup Table (from api/remote/codes.go) */
@@ -250,11 +265,13 @@ static int all_ones(const uint8_t *arr, int count) {
 /* Wait for GPIO pin to reach target state or timeout */
 /* Uses 800ns delay between reads - this was critical to get clean GPIO readings */
 static uint32_t wait_for_state(uint32_t target_state, uint32_t max_cycles, int *timed_out) {
-    uint32_t start = get_cycles();
+    uint32_t start = read_counter();
     uint32_t elapsed;
+    /* 800ns delay between reads to match working raw GPIO test (160 cycles @ 200MHz) */
+    __delay_cycles(160);
 
     while (read_gpio() != target_state) {
-        elapsed = get_cycles() - start;
+        elapsed = read_counter() - start;
         if (elapsed > max_cycles) {
             *timed_out = 1;
             return elapsed;
@@ -264,13 +281,13 @@ static uint32_t wait_for_state(uint32_t target_state, uint32_t max_cycles, int *
     }
 
     *timed_out = 0;
-    return get_cycles() - start;
+    return read_counter() - start;
 }
 
 /* Measure how long GPIO STAYS in current state (matches Go readWhileValue behavior) */
 /* Assumes GPIO is currently in current_state, measures until it changes */
 static uint32_t measure_state_duration(uint32_t current_state, uint32_t max_cycles, int *timed_out) {
-    uint32_t start = get_cycles();  /* Start timer immediately */
+    uint32_t start = read_counter();
     uint32_t elapsed;
 
     /* Critical: Delay before first read to allow signal to stabilize after transition */
@@ -279,7 +296,7 @@ static uint32_t measure_state_duration(uint32_t current_state, uint32_t max_cycl
     __delay_cycles(160);
 
     while (read_gpio() == current_state) {  /* Loop WHILE in current state */
-        elapsed = get_cycles() - start;
+        elapsed = read_counter() - start;
         if (elapsed > max_cycles) {
             *timed_out = 1;
             return elapsed;
@@ -289,7 +306,7 @@ static uint32_t measure_state_duration(uint32_t current_state, uint32_t max_cycl
     }
 
     *timed_out = 0;
-    return get_cycles() - start;
+    return read_counter() - start;
 }
 
 /* Decode bit based on low duration */
@@ -322,7 +339,6 @@ static int read_ir_packet(void) {
     uint8_t bits[IR_PACKET_LENGTH];
     int i;
     int timed_out;
-    uint32_t packet_start = get_cycles();
 
     /* GPIO is already LOW when this function is called (detected in main loop) */
     /* NEC protocol: 9ms LOW leader + 4.5ms HIGH space + data bits */
@@ -357,13 +373,8 @@ static int read_ir_packet(void) {
     }
 
     /* Now read the remaining 32 bits (bits 1-32) */
+    /* Note: Removed packet timeout check since counter resets on each measurement */
     for (i = 1; i < IR_PACKET_LENGTH; i++) {
-        /* Check packet timeout */
-        if ((get_cycles() - packet_start) > MAX_PACKET_DURATION) {
-            ctrl->event_count = 0xFFFD;
-            ctrl->overrun_count = i;
-            return -1;
-        }
 
         /* Wait for GPIO to go LOW (end of HIGH space period) */
         wait_for_state(0, MAX_BIT_WAIT, &timed_out);
@@ -395,10 +406,13 @@ static int read_ir_packet(void) {
     }
 
     /* Test pattern to verify struct alignment - write known values */
-    debug->durations[0] = 0x11111111;  /* 286331153 */
-    debug->durations[1] = 0x22222222;  /* 572662306 */
-    debug->durations[2] = 0x33333333;  /* 858993459 */
-    debug->durations[3] = 0x44444444;  /* 1145324612 */
+    // debug->durations[0] = 0x11111111;  /* 286331153 */
+    // debug->durations[1] = 0x22222222;  /* 572662306 */
+    // debug->durations[2] = 0x33333333;  /* 858993459 */
+    // debug->durations[3] = 0x44444444;  /* 1145324612 */
+
+    /* Mark debug data as valid */
+    debug->valid = 1;
 
     /* Validate protocol structure */
     if (bits[0] != 1) {
@@ -468,6 +482,9 @@ static void run_ir_detection_loop(void) {
     while (1) {
         /* Wait for GPIO LOW (signal present) - matches Go's trigger condition */
         if (read_gpio() == 0) {
+            /* Reset counter at start of IR signal detection to prevent overflow */
+            start_counter();
+
             /* Attempt to read and decode the IR packet */
             button_code = read_ir_packet();
 
@@ -480,6 +497,9 @@ static void run_ir_detection_loop(void) {
 
             /* Wait for GPIO to return HIGH (idle) before looking for next packet */
             wait_for_state(1, MAX_PACKET_DURATION, &timed_out);
+
+            /* Stop counter after IR signal processing is complete */
+            stop_counter();
         }
 
         /* 100ns delay between main loop iterations for stable GPIO reads */
@@ -493,6 +513,14 @@ void main(void) {
     struct control_block *ctrl = (struct control_block *)(PRU_SHARED_MEM + CONTROL_BLOCK);
     struct debug_bits_data *debug = (struct debug_bits_data *)(PRU_SHARED_MEM + DEBUG_BITS_OFFSET);
     int i;
+
+    /* Enable PRU cycle counter - required for timing measurements */
+    PRU0_CTRL.CTRL_bit.CTR_EN = 1;
+
+    /* Test if cycle counter is working */
+    start_counter();
+    __delay_cycles(10000);  /* 50 microsecond delay = 10,000 cycles */
+    uint32_t test_cycles_after_delay = read_counter();
 
     /* Enable OCP master port - allows PRU to access peripheral registers like GPIO */
     CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
@@ -512,14 +540,16 @@ void main(void) {
     ctrl->read_index = 0;
     ctrl->event_count = 0;
     ctrl->error_count = 0;
-    ctrl->overrun_count = (gpcfg0_before << 16) | gpcfg1_before;   /* DEBUG: Store initial values */
-    ctrl->status = (gpcfg0_after << 16) | gpcfg1_after;            /* DEBUG: Store final values */
+    ctrl->overrun_count = 0;
+    ctrl->status = test_cycles_after_delay;  /* DEBUG: Should be ~10000 if counter works */
 
     /* Initialize debug structure - clear any stale data */
     debug->valid = 0;
     debug->error_code = 0;
-    for (i = 0; i < IR_PACKET_LENGTH; i++) {
+    for (i = 0; i < 36; i++) {
         debug->bits[i] = 0;
+    }
+    for (i = 0; i < IR_PACKET_LENGTH; i++) {
         debug->durations[i] = 0;
     }
 

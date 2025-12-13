@@ -16,9 +16,8 @@ const (
 type debugBitsData struct {
 	Valid     uint32
 	ErrorCode uint32
-	Bits      [33]uint8
-	_         [4]uint8   // Padding - need 4 bytes not 3 to match C compiler layout
-	Durations [33]uint32 // LOW pulse durations in cycles
+	Bits      [36]uint8   // 36 bytes (33 actual bits + 3 padding) for natural 4-byte alignment
+	Durations [33]uint32  // LOW pulse durations in cycles
 }
 
 func main() {
