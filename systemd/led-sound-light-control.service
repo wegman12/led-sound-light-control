@@ -1,7 +1,8 @@
 [Unit]
 Description=LED Sound Light Control API Server
-After=network.target pwm-setup.service
+After=network.target pwm-setup.service enable-remote-detection-pru.service
 Wants=pwm-setup.service
+Requires=enable-remote-detection-pru.service
 
 [Service]
 Type=simple

@@ -1,0 +1,17 @@
+[Unit]
+Description=Enable PRU Remote Detection Firmware
+Documentation=https://github.com/kevinwegman/led-sound-light-control
+DefaultDependencies=no
+Before=led-sound-light-control.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo "start" > /sys/class/remoteproc/remoteproc1/state'
+ExecStop=/bin/sh -c 'echo "stop" > /sys/class/remoteproc/remoteproc1/state'
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

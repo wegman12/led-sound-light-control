@@ -25,6 +25,7 @@ type pruControlBlock struct {
 	ErrorCount   uint32
 	OverrunCount uint32
 	Status       uint32
+	ErrorCode    uint32
 }
 
 // buttonEvent matches the C struct in PRU firmware (8 bytes)

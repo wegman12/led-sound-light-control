@@ -78,8 +78,12 @@ struct control_block {
     volatile uint32_t event_count;
     volatile uint32_t error_count;
     volatile uint32_t overrun_count;
+    volatile uint32_t status;      /* PRU running status (non-zero = running) */
     volatile uint32_t error_code;  /* Last error code for debugging */
 };
+
+/* Status Codes */
+#define STATUS_RUNNING          0x52554E  /* "RUN" in ASCII - indicates PRU is running */
 
 /* Error Codes */
 #define ERROR_NONE              0x0000
@@ -114,7 +118,7 @@ static inline void reset_counter(void) {
     /* Reset counter to 0 by disabling and re-enabling */
     PRU0_CTRL.CTRL_bit.CTR_EN = 0;
     PRU0_CTRL.CTRL_bit.CTR_EN = 1;
-    
+
     /* Reset counter to 0 by writing directly to CYCLE register */
     PRU0_CTRL.CYCLE = 0;
 }
@@ -472,6 +476,7 @@ void main(void) {
     ctrl->event_count = 0;
     ctrl->error_count = 0;
     ctrl->overrun_count = 0;
+    ctrl->status = STATUS_RUNNING;
     ctrl->error_code = ERROR_NONE;
 
     /* Run the IR detection loop (never returns) */
