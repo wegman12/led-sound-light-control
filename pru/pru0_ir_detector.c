@@ -111,6 +111,10 @@ static inline uint32_t read_gpio(void) {
 
 /* PRU Cycle Counter Functions */
 static inline void reset_counter(void) {
+    /* Reset counter to 0 by disabling and re-enabling */
+    PRU0_CTRL.CTRL_bit.CTR_EN = 0;
+    PRU0_CTRL.CTRL_bit.CTR_EN = 1;
+    
     /* Reset counter to 0 by writing directly to CYCLE register */
     PRU0_CTRL.CYCLE = 0;
 }
