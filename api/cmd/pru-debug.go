@@ -20,8 +20,14 @@ type pruControlBlock struct {
 	EventCount   uint32
 	ErrorCount   uint32
 	OverrunCount uint32
+	Status       uint32
 	ErrorCode    uint32
 }
+
+// Status code constants (matching pru0_ir_detector.c)
+const (
+	STATUS_RUNNING = 0x52554E // "RUN" in ASCII
+)
 
 // Error code constants (matching pru0_ir_detector.c)
 const (
@@ -36,6 +42,15 @@ const (
 	ERROR_SEPARATOR_BITS = 0x0008
 	ERROR_NO_MATCH       = 0x0009
 )
+
+func statusString(status uint32) string {
+	if status == STATUS_RUNNING {
+		return "RUN"
+	} else if status == 0 {
+		return "OFF"
+	}
+	return fmt.Sprintf("0x%X", status)
+}
 
 func errorCodeString(code uint32) string {
 	switch code {
@@ -99,8 +114,8 @@ func main() {
 	controlBlock := (*pruControlBlock)(unsafe.Pointer(uintptr(unsafe.Pointer(&mem[0])) + uintptr(controlBlockOffset)))
 
 	fmt.Println("Monitoring PRU Control Block:")
-	fmt.Println("Time       | write | read | events | errors | overrun | error_code")
-	fmt.Println("-----------+-------+------+--------+--------+---------+-------------------")
+	fmt.Println("Time       | write | read | events | errors | overrun | status | error_code")
+	fmt.Println("-----------+-------+------+--------+--------+---------+--------+-------------------")
 
 	lastErrorCode := uint32(0)
 	lastEvents := uint32(0)
@@ -114,6 +129,7 @@ func main() {
 		events := controlBlock.EventCount
 		errors := controlBlock.ErrorCount
 		overrun := controlBlock.OverrunCount
+		status := controlBlock.Status
 		errorCode := controlBlock.ErrorCode
 
 		timestamp := time.Now().Format("15:04:05")
@@ -134,8 +150,15 @@ func main() {
 			errorsStr = fmt.Sprintf("\033[33m%d\033[0m", errors)  // Yellow for new errors
 		}
 
-		fmt.Printf("%s | %5d | %4d | %6s | %6s | %7d | %s\n",
-			timestamp, writeIdx, readIdx, eventsStr, errorsStr, overrun, errorCodeStr)
+		statusStr := statusString(status)
+		if status == STATUS_RUNNING {
+			statusStr = fmt.Sprintf("\033[32m%s\033[0m", statusStr)  // Green for running
+		} else {
+			statusStr = fmt.Sprintf("\033[31m%s\033[0m", statusStr)  // Red for not running
+		}
+
+		fmt.Printf("%s | %5d | %4d | %6s | %6s | %7d | %6s | %s\n",
+			timestamp, writeIdx, readIdx, eventsStr, errorsStr, overrun, statusStr, errorCodeStr)
 
 		lastErrorCode = errorCode
 		lastEvents = events
