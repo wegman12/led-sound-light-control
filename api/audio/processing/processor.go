@@ -5,7 +5,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/wegman12/led-sound-light-control/sound/sampling"
+	"github.com/wegman12/led-sound-light-control/audio/sampling"
 	"go.uber.org/zap"
 )
 

@@ -1,4 +1,4 @@
-package sound
+package audio
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/wegman12/led-sound-light-control/sound/processing"
+	"github.com/wegman12/led-sound-light-control/audio/processing"
 	"github.com/wegman12/led-sound-light-control/utilities"
 	"go.uber.org/zap"
 )

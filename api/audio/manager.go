@@ -1,12 +1,12 @@
-package sound
+package audio
 
 import (
 	"context"
 	"sync"
 	"time"
 
-	"github.com/wegman12/led-sound-light-control/sound/processing"
-	"github.com/wegman12/led-sound-light-control/sound/sampling"
+	"github.com/wegman12/led-sound-light-control/audio/processing"
+	"github.com/wegman12/led-sound-light-control/audio/sampling"
 	"go.uber.org/zap"
 )
 

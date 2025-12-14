@@ -6,10 +6,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/wegman12/led-sound-light-control/audio"
 	"github.com/wegman12/led-sound-light-control/infrastructure/server"
 	"github.com/wegman12/led-sound-light-control/light"
 	"github.com/wegman12/led-sound-light-control/remote"
-	"github.com/wegman12/led-sound-light-control/sound"
 )
 
 var cfgFile string
@@ -34,7 +34,7 @@ to quickly create a Cobra application.`,
 func Execute() {
 	rootCmd.AddCommand(light.MakeLedTesterCmd())
 	rootCmd.AddCommand(server.MakeServerCmd())
-	rootCmd.AddCommand(sound.MakeSoundTesterCmd())
+	rootCmd.AddCommand(audio.MakeSoundTesterCmd())
 	rootCmd.AddCommand(remote.MakeRemoteCmd())
 	err := rootCmd.Execute()
 	if err != nil {
