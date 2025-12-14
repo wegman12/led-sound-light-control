@@ -8,6 +8,7 @@ SYSTEMD_DIR = /etc/systemd/system
 # Service files to deploy
 SERVICES = \
 	enable-remote-detection-pru.service \
+	enable-audio-pru.service \
 	led-sound-light-control.service \
 	pwm-setup.service \
 	gpio-ir-setup.service
@@ -60,6 +61,7 @@ disable:
 start:
 	@echo "Starting services on $(DEPLOY_HOST)..."
 	@ssh $(DEPLOY_HOST) "sudo systemctl start enable-remote-detection-pru.service"
+	@ssh $(DEPLOY_HOST) "sudo systemctl start enable-audio-pru.service"
 	@ssh $(DEPLOY_HOST) "sudo systemctl start pwm-setup.service"
 	@ssh $(DEPLOY_HOST) "sudo systemctl start gpio-ir-setup.service"
 	@ssh $(DEPLOY_HOST) "sudo systemctl start led-sound-light-control.service"
@@ -70,6 +72,7 @@ stop:
 	@echo "Stopping services on $(DEPLOY_HOST)..."
 	@ssh $(DEPLOY_HOST) "sudo systemctl stop led-sound-light-control.service" || true
 	@ssh $(DEPLOY_HOST) "sudo systemctl stop enable-remote-detection-pru.service" || true
+	@ssh $(DEPLOY_HOST) "sudo systemctl stop enable-audio-pru.service" || true
 	@echo "Services stopped"
 
 # Restart services
@@ -79,14 +82,18 @@ restart: stop start
 status:
 	@echo "Checking service status on $(DEPLOY_HOST)..."
 	@echo ""
-	@echo "=== PRU Service ==="
+	@echo "=== PRU0 Remote Detection Service ==="
 	@ssh $(DEPLOY_HOST) "sudo systemctl status enable-remote-detection-pru.service --no-pager" || true
+	@echo ""
+	@echo "=== PRU1 Audio Service ==="
+	@ssh $(DEPLOY_HOST) "sudo systemctl status enable-audio-pru.service --no-pager" || true
 	@echo ""
 	@echo "=== Main Application Service ==="
 	@ssh $(DEPLOY_HOST) "sudo systemctl status led-sound-light-control.service --no-pager" || true
 	@echo ""
-	@echo "=== PRU State ==="
-	@ssh $(DEPLOY_HOST) "cat /sys/class/remoteproc/remoteproc1/state" || true
+	@echo "=== PRU States ==="
+	@echo "PRU0 (remoteproc1): $$(ssh $(DEPLOY_HOST) 'cat /sys/class/remoteproc/remoteproc1/state' 2>/dev/null || echo 'unavailable')"
+	@echo "PRU1 (remoteproc2): $$(ssh $(DEPLOY_HOST) 'cat /sys/class/remoteproc/remoteproc2/state' 2>/dev/null || echo 'unavailable')"
 
 # Clean - remove service files from target
 clean:
