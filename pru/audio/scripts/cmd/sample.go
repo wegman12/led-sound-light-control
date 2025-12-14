@@ -24,7 +24,15 @@ const (
 )
 
 // AudioControlBlock represents the PRU1 audio control block
+// Layout: Configuration (written by host) + Status (written by PRU)
 type AudioControlBlock struct {
+	// === Configuration Section (written by host, read by PRU) ===
+	FFTEnable     uint32  // 1 = FFT enabled, 0 = disabled
+	BassMaxHz     uint32  // Bass upper frequency boundary (Hz)
+	MidLowMaxHz   uint32  // Mid-low upper frequency boundary (Hz)
+	MidHighMaxHz  uint32  // Mid-high upper frequency boundary (Hz)
+
+	// === Status Section (written by PRU, read by host) ===
 	Status           uint32  // PRU running status
 	TotalSamples     uint32  // Total samples collected
 	BufferCount      uint32  // Number of completed buffers
@@ -37,10 +45,11 @@ type AudioControlBlock struct {
 	MaxSample        uint32  // Maximum sample value
 	FFTCount         uint32  // Number of FFTs computed
 	FFTTimeCycles    uint32  // Last FFT processing time (PRU cycles)
-	Bass             uint32  // Bass magnitude (0-150 Hz)
-	MidLow           uint32  // Mid-low magnitude (150-1000 Hz)
-	MidHigh          uint32  // Mid-high magnitude (1000-2000 Hz)
-	Treble           uint32  // Treble magnitude (2000-20000 Hz)
+	FFTSkipped       uint32  // FFTs skipped due to timing overrun
+	Bass             uint32  // Bass magnitude (0-bass_max_hz)
+	MidLow           uint32  // Mid-low magnitude (bass_max_hz-midlow_max_hz)
+	MidHigh          uint32  // Mid-high magnitude (midlow_max_hz-midhigh_max_hz)
+	Treble           uint32  // Treble magnitude (midhigh_max_hz-Nyquist)
 }
 
 // sampleCmd represents the sample command
@@ -87,9 +96,19 @@ func runSample(cmd *cobra.Command, args []string) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
+	// Read initial control block to show configuration
+	ctrl := (*AudioControlBlock)(controlBlockPtr)
+
 	fmt.Println("PRU1 Audio Sampling Monitor - 40 kHz IEP Timer Mode")
 	fmt.Println("====================================================")
 	fmt.Println("High-speed ADC sampling from AIN1 at 40 kHz")
+	fmt.Printf("FFT: %s | Bands: Bass 0-%d Hz, Mid-Low %d-%d Hz, Mid-High %d-%d Hz, Treble %d-20000 Hz\n",
+		map[uint32]string{0: "DISABLED", 1: "ENABLED"}[ctrl.FFTEnable],
+		ctrl.BassMaxHz,
+		ctrl.BassMaxHz, ctrl.MidLowMaxHz,
+		ctrl.MidLowMaxHz, ctrl.MidHighMaxHz,
+		ctrl.MidHighMaxHz,
+	)
 	fmt.Println("Press Ctrl+C to exit")
 	fmt.Println()
 
@@ -130,7 +149,7 @@ func runSample(cmd *cobra.Command, args []string) {
 			// Calculate FFT timing (cycles @ 200 MHz)
 			fftTimeUs := float64(ctrl.FFTTimeCycles) / 200.0  // Convert to microseconds
 
-			fmt.Printf("\r%-10s | Rate: %5d Hz | Buffers: %6d (%d/s) | Buf: %s [%4d/%4d] | Timeouts: %4d",
+			fmt.Printf("\r%-10s | Rate: %5d Hz | Buffers: %6d (%d/s) | Buf: %s [%4d/%4d] | Timeouts: %4d | Skipped: %4d",
 				statusStr,
 				samplesPerSec,
 				ctrl.BufferCount,
@@ -139,6 +158,7 @@ func runSample(cmd *cobra.Command, args []string) {
 				ctrl.SamplesInBuffer,
 				1024,
 				ctrl.ADCTimeouts,
+				ctrl.FFTSkipped,
 			)
 
 			fmt.Printf("\n")

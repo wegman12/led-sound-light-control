@@ -57,8 +57,17 @@
 #define STATUS_SAMPLING     0x53414D50  /* "SAMP" in ASCII - High-speed sampling active */
 #define STATUS_FFT_PROC     0x46465450  /* "FFTP" in ASCII - FFT processing */
 
-/* Audio Control Block Structure (in shared memory) */
+/* Audio Control Block Structure (in shared memory)
+ * Layout: Configuration (written by host) + Status (written by PRU)
+ */
 struct audio_control_block {
+    /* === Configuration Section (written by host, read by PRU) === */
+    volatile uint32_t fft_enable;           /* 1 = FFT enabled, 0 = disabled */
+    volatile uint32_t bass_max_hz;          /* Bass upper frequency boundary (Hz) */
+    volatile uint32_t midlow_max_hz;        /* Mid-low upper frequency boundary (Hz) */
+    volatile uint32_t midhigh_max_hz;       /* Mid-high upper frequency boundary (Hz) */
+
+    /* === Status Section (written by PRU, read by host) === */
     volatile uint32_t status;               /* PRU running status */
     volatile uint32_t total_samples;        /* Total samples collected */
     volatile uint32_t buffer_count;         /* Number of completed buffers */
@@ -71,10 +80,11 @@ struct audio_control_block {
     volatile uint32_t max_sample;           /* Maximum sample value */
     volatile uint32_t fft_count;            /* Number of FFTs computed */
     volatile uint32_t fft_time_cycles;      /* Last FFT processing time (PRU cycles) */
-    volatile uint32_t bass;                 /* Bass magnitude (0-150 Hz, bins 0-3) */
-    volatile uint32_t mid_low;              /* Mid-low magnitude (150-1000 Hz, bins 4-25) */
-    volatile uint32_t mid_high;             /* Mid-high magnitude (1000-2000 Hz, bins 26-51) */
-    volatile uint32_t treble;               /* Treble magnitude (2000-20000 Hz, bins 52-511) */
+    volatile uint32_t fft_skipped;          /* FFTs skipped due to timing overrun */
+    volatile uint32_t bass;                 /* Bass magnitude (0-bass_max_hz) */
+    volatile uint32_t mid_low;              /* Mid-low magnitude (bass_max_hz-midlow_max_hz) */
+    volatile uint32_t mid_high;             /* Mid-high magnitude (midlow_max_hz-midhigh_max_hz) */
+    volatile uint32_t treble;               /* Treble magnitude (midhigh_max_hz-Nyquist) */
 };
 
 /* Sample buffer type (16-bit samples for 12-bit ADC) */
@@ -202,7 +212,20 @@ void main(void) {
     /* Enable OCP master port - allows PRU to access peripheral registers */
     CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;
 
-    /* Initialize control block */
+    /* Initialize configuration section with defaults (if not already set by host)
+     * Check if configuration looks valid - all boundaries should be reasonable
+     */
+    if (ctrl->bass_max_hz < 10 || ctrl->bass_max_hz > 1000 ||
+        ctrl->midlow_max_hz < 100 || ctrl->midlow_max_hz > 5000 ||
+        ctrl->midhigh_max_hz < 500 || ctrl->midhigh_max_hz > 10000) {
+        /* Configuration invalid or first boot - set defaults */
+        ctrl->fft_enable = 1;              /* FFT enabled by default */
+        ctrl->bass_max_hz = BASS_MAX_HZ;
+        ctrl->midlow_max_hz = MIDLOW_MAX_HZ;
+        ctrl->midhigh_max_hz = MIDHIGH_MAX_HZ;
+    }
+
+    /* Initialize status section */
     ctrl->status = STATUS_RUNNING;
     ctrl->total_samples = 0;
     ctrl->buffer_count = 0;
@@ -215,6 +238,7 @@ void main(void) {
     ctrl->max_sample = 0;      /* Start at min */
     ctrl->fft_count = 0;
     ctrl->fft_time_cycles = 0;
+    ctrl->fft_skipped = 0;
     ctrl->bass = 0;
     ctrl->mid_low = 0;
     ctrl->mid_high = 0;
@@ -292,62 +316,64 @@ void main(void) {
             /* Reset buffer index */
             buffer_index = 0;
 
-            /* Process FFT on completed buffer */
-            ctrl->status = STATUS_FFT_PROC;
+            /* Process FFT on completed buffer (if enabled) */
+            if (ctrl->fft_enable) {
+                ctrl->status = STATUS_FFT_PROC;
 
-            /* Reset cycle counter to prevent overflow during timing */
-            reset_counter();
+                /* Reset cycle counter to prevent overflow during timing */
+                reset_counter();
 
-            /* Initialize FFT with completed buffer samples */
-            fft_init(fft_buf, (const int16_t *)completed_buffer);
+                /* Initialize FFT with completed buffer samples */
+                fft_init(fft_buf, (const int16_t *)completed_buffer);
 
-            /* Compute FFT */
-            fft_compute(fft_buf);
+                /* Compute FFT */
+                fft_compute(fft_buf);
 
-            /* Record FFT processing time (cycles elapsed since reset) */
-            fft_end_time = PRU1_CTRL.CYCLE;
-            ctrl->fft_time_cycles = fft_end_time;
-            ctrl->fft_count++;
+                /* Record FFT processing time (cycles elapsed since reset) */
+                fft_end_time = PRU1_CTRL.CYCLE;
+                ctrl->fft_time_cycles = fft_end_time;
+                ctrl->fft_count++;
 
-            /* Calculate magnitude and accumulate into frequency bins */
-            {
-                uint16_t bin;
-                uint32_t mag_sq;
-                uint32_t bass_sum = 0;
-                uint32_t midlow_sum = 0;
-                uint32_t midhigh_sum = 0;
-                uint32_t treble_sum = 0;
+                /* Calculate magnitude and accumulate into frequency bins */
+                {
+                    uint16_t bin;
+                    uint32_t mag_sq;
+                    uint32_t bass_sum = 0;
+                    uint32_t midlow_sum = 0;
+                    uint32_t midhigh_sum = 0;
+                    uint32_t treble_sum = 0;
 
-                /* Calculate bin boundaries based on frequency ranges */
-                const uint16_t bass_end = FREQ_TO_BIN(BASS_MAX_HZ);
-                const uint16_t midlow_end = FREQ_TO_BIN(MIDLOW_MAX_HZ);
-                const uint16_t midhigh_end = FREQ_TO_BIN(MIDHIGH_MAX_HZ);
-                const uint16_t nyquist_bin = FFT_SIZE / 2;  /* Only first half has unique data */
+                    /* Calculate bin boundaries based on configurable frequency ranges */
+                    const uint16_t bass_end = FREQ_TO_BIN(ctrl->bass_max_hz);
+                    const uint16_t midlow_end = FREQ_TO_BIN(ctrl->midlow_max_hz);
+                    const uint16_t midhigh_end = FREQ_TO_BIN(ctrl->midhigh_max_hz);
+                    const uint16_t nyquist_bin = FFT_SIZE / 2;  /* Only first half has unique data */
 
-                /* Accumulate magnitudes for each frequency band */
-                for (bin = 0; bin < nyquist_bin; bin++) {
-                    mag_sq = fft_magnitude_squared(fft_buf->data[bin]);
+                    /* Accumulate magnitudes for each frequency band */
+                    for (bin = 0; bin < nyquist_bin; bin++) {
+                        mag_sq = fft_magnitude_squared(fft_buf->data[bin]);
 
-                    if (bin <= bass_end) {
-                        bass_sum += mag_sq;
-                    } else if (bin <= midlow_end) {
-                        midlow_sum += mag_sq;
-                    } else if (bin <= midhigh_end) {
-                        midhigh_sum += mag_sq;
-                    } else {
-                        treble_sum += mag_sq;
+                        if (bin <= bass_end) {
+                            bass_sum += mag_sq;
+                        } else if (bin <= midlow_end) {
+                            midlow_sum += mag_sq;
+                        } else if (bin <= midhigh_end) {
+                            midhigh_sum += mag_sq;
+                        } else {
+                            treble_sum += mag_sq;
+                        }
                     }
+
+                    /* Write results to control block */
+                    ctrl->bass = bass_sum;
+                    ctrl->mid_low = midlow_sum;
+                    ctrl->mid_high = midhigh_sum;
+                    ctrl->treble = treble_sum;
                 }
 
-                /* Write results to control block */
-                ctrl->bass = bass_sum;
-                ctrl->mid_low = midlow_sum;
-                ctrl->mid_high = midhigh_sum;
-                ctrl->treble = treble_sum;
+                /* Return to sampling status */
+                ctrl->status = STATUS_SAMPLING;
             }
-
-            /* Return to sampling status */
-            ctrl->status = STATUS_SAMPLING;
         }
 
         /* Update current position */
