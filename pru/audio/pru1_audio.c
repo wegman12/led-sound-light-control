@@ -14,6 +14,7 @@
 #include <pru_iep.h>
 #include <sys_tscAdcSs.h>
 #include "resource_table_empty.h"
+#include "fft.h"
 
 /* Memory Layout */
 #define PRU_SHARED_MEM      0x00010000
@@ -42,6 +43,7 @@
 #define STATUS_ADC_INIT     0x41444349  /* "ADCI" in ASCII - ADC initialized */
 #define STATUS_IEP_INIT     0x49455049  /* "IEPI" in ASCII - IEP initialized */
 #define STATUS_SAMPLING     0x53414D50  /* "SAMP" in ASCII - High-speed sampling active */
+#define STATUS_FFT_PROC     0x46465450  /* "FFTP" in ASCII - FFT processing */
 
 /* Audio Control Block Structure (in shared memory) */
 struct audio_control_block {
@@ -55,7 +57,9 @@ struct audio_control_block {
     volatile uint32_t last_sample;          /* Most recent sample value */
     volatile uint32_t min_sample;           /* Minimum sample value */
     volatile uint32_t max_sample;           /* Maximum sample value */
-    volatile uint32_t reserved[6];          /* Reserved for future use (64 bytes total) */
+    volatile uint32_t fft_count;            /* Number of FFTs computed */
+    volatile uint32_t fft_time_cycles;      /* Last FFT processing time (PRU cycles) */
+    volatile uint32_t reserved[4];          /* Reserved for future use (64 bytes total) */
 };
 
 /* Sample buffer type (16-bit samples for 12-bit ADC) */
@@ -155,14 +159,17 @@ static inline void trigger_adc(void) {
     ADC_TSC.STEPENABLE = (1 << 1);
 }
 
-/* Main function - High-speed 40 kHz ADC sampling with double buffering */
+/* Main function - High-speed 40 kHz ADC sampling with double buffering and FFT */
 void main(void) {
     struct audio_control_block *ctrl = (struct audio_control_block *)(PRU_SHARED_MEM + AUDIO_CONTROL_BLOCK);
     sample_t *buffer_a = (sample_t *)BUFFER_A_OFFSET;  /* Buffer A in PRU1 DRAM */
     sample_t *buffer_b = (sample_t *)BUFFER_B_OFFSET;  /* Buffer B in PRU1 DRAM */
+    fft_buffer_t *fft_buf = (fft_buffer_t *)FFT_BUFFER_OFFSET;  /* FFT working memory */
     sample_t *current_buffer;
+    sample_t *completed_buffer;
     uint32_t buffer_index;
     uint16_t sample;
+    uint32_t fft_start_time, fft_end_time;
 
     /* Enable PRU cycle counter */
     PRU1_CTRL.CTRL_bit.CTR_EN = 1;
@@ -181,6 +188,8 @@ void main(void) {
     ctrl->last_sample = 0;
     ctrl->min_sample = 4095;   /* Start at max */
     ctrl->max_sample = 0;      /* Start at min */
+    ctrl->fft_count = 0;
+    ctrl->fft_time_cycles = 0;
 
     /* Initialize ADC */
     init_adc(ctrl);
@@ -234,8 +243,11 @@ void main(void) {
 
         /* Check if buffer is full */
         if (buffer_index >= BUFFER_SIZE) {
-            /* Buffer complete - swap to other buffer */
+            /* Buffer complete - process FFT on this buffer */
             ctrl->buffer_count++;
+
+            /* Save pointer to completed buffer */
+            completed_buffer = current_buffer;
 
             /* Swap buffers */
             if (ctrl->current_buffer == 0) {
@@ -251,7 +263,29 @@ void main(void) {
             /* Reset buffer index */
             buffer_index = 0;
 
-            /* TODO: In future, set flag for FFT processing on completed buffer */
+            /* Process FFT on completed buffer */
+            ctrl->status = STATUS_FFT_PROC;
+
+            /* Record start time */
+            fft_start_time = PRU1_CTRL.CYCLE;
+
+            /* Initialize FFT with completed buffer samples */
+            fft_init(fft_buf, (const int16_t *)completed_buffer);
+
+            /* Compute FFT */
+            fft_compute(fft_buf);
+
+            /* Record end time */
+            fft_end_time = PRU1_CTRL.CYCLE;
+
+            /* Calculate FFT processing time */
+            ctrl->fft_time_cycles = fft_end_time - fft_start_time;
+            ctrl->fft_count++;
+
+            /* Return to sampling status */
+            ctrl->status = STATUS_SAMPLING;
+
+            /* TODO Stage 8c: Calculate magnitude and frequency bins */
         }
 
         /* Update current position */

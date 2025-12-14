@@ -35,7 +35,9 @@ type AudioControlBlock struct {
 	LastSample       uint32  // Most recent sample value
 	MinSample        uint32  // Minimum sample value
 	MaxSample        uint32  // Maximum sample value
-	Reserved         [6]uint32  // Reserved for future use
+	FFTCount         uint32  // Number of FFTs computed
+	FFTTimeCycles    uint32  // Last FFT processing time (PRU cycles)
+	Reserved         [4]uint32  // Reserved for future use
 }
 
 // sampleCmd represents the sample command
@@ -122,6 +124,9 @@ func runSample(cmd *cobra.Command, args []string) {
 			minVoltage := float64(ctrl.MinSample) * 1.8 / 4095.0
 			maxVoltage := float64(ctrl.MaxSample) * 1.8 / 4095.0
 
+			// Calculate FFT timing (cycles @ 200 MHz)
+			fftTimeUs := float64(ctrl.FFTTimeCycles) / 200.0  // Convert to microseconds
+
 			fmt.Printf("\r%-10s | Rate: %5d Hz | Buffers: %6d (%d/s) | Buf: %s [%4d/%4d] | Timeouts: %4d",
 				statusStr,
 				samplesPerSec,
@@ -134,11 +139,12 @@ func runSample(cmd *cobra.Command, args []string) {
 			)
 
 			fmt.Printf("\n")
-			fmt.Printf("Last: %4d (%.3fV) | Min: %4d (%.3fV) | Max: %4d (%.3fV) | Total: %10d samples",
+			fmt.Printf("Last: %4d (%.3fV) | Min: %4d (%.3fV) | Max: %4d (%.3fV) | FFTs: %6d (%.2f ms)",
 				ctrl.LastSample, lastVoltage,
 				ctrl.MinSample, minVoltage,
 				ctrl.MaxSample, maxVoltage,
-				ctrl.TotalSamples,
+				ctrl.FFTCount,
+				fftTimeUs/1000.0,
 			)
 
 			// Move cursor up to overwrite previous output
@@ -158,6 +164,8 @@ func decodeStatus(status uint32) string {
 		return "IEP_INIT"
 	case 0x53414D50: // "SAMP"
 		return "SAMPLING"
+	case 0x46465450: // "FFTP"
+		return "FFT_PROC"
 	default:
 		return fmt.Sprintf("UNK(0x%08X)", status)
 	}

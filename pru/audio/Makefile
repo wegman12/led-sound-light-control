@@ -35,8 +35,8 @@ INCLUDE := --include_path=$(SRC_DIR) \
 LDFILE := am335x_pru.cmd
 
 # Source files
-SOURCE := pru1_audio.c
-OBJECT := $(GEN_DIR)/pru1_audio.obj
+SOURCES := pru1_audio.c fft.c
+OBJECTS := $(GEN_DIR)/pru1_audio.obj $(GEN_DIR)/fft.obj
 
 # Output firmware
 TARGET := $(GEN_DIR)/pru1_audio.out
@@ -61,16 +61,20 @@ all: $(GEN_DIR) $(TARGET)
 $(GEN_DIR):
 	@mkdir -p $(GEN_DIR)
 
-# Compile C source to object file
-$(OBJECT): $(SOURCE) resource_table_empty.h | $(GEN_DIR)
-	@echo "Compiling PRU1 audio firmware..."
-	$(CC) $(INCLUDE) $(CFLAGS) -c $(SOURCE) -o $(OBJECT)
+# Compile C source files to object files
+$(GEN_DIR)/pru1_audio.obj: pru1_audio.c resource_table_empty.h fft.h | $(GEN_DIR)
+	@echo "Compiling pru1_audio.c..."
+	$(CC) $(INCLUDE) $(CFLAGS) -c pru1_audio.c -o $(GEN_DIR)/pru1_audio.obj
 
-# Link object file to create firmware
-$(TARGET): $(OBJECT) $(LDFILE)
+$(GEN_DIR)/fft.obj: fft.c fft.h | $(GEN_DIR)
+	@echo "Compiling fft.c..."
+	$(CC) $(INCLUDE) $(CFLAGS) -c fft.c -o $(GEN_DIR)/fft.obj
+
+# Link object files to create firmware
+$(TARGET): $(OBJECTS) $(LDFILE)
 	@echo "Linking PRU1 audio firmware..."
-	$(LD) $(CFLAGS) -z $(LIB_INCLUDE) $(LFLAGS) -o $(TARGET) $(OBJECT) \
-		-m $(GEN_DIR)/$(basename $(notdir $(SOURCE))).map $(LDFILE) --library=libc.a
+	$(LD) $(CFLAGS) -z $(LIB_INCLUDE) $(LFLAGS) -o $(TARGET) $(OBJECTS) \
+		-m $(GEN_DIR)/pru1_audio.map $(LDFILE) --library=libc.a
 
 # Clean build artifacts
 clean:
