@@ -81,10 +81,14 @@ struct audio_control_block {
     volatile uint32_t fft_count;            /* Number of FFTs computed */
     volatile uint32_t fft_time_cycles;      /* Last FFT processing time (PRU cycles) */
     volatile uint32_t fft_skipped;          /* FFTs skipped due to timing overrun */
-    volatile uint32_t bass;                 /* Bass magnitude (0-bass_max_hz) */
-    volatile uint32_t mid_low;              /* Mid-low magnitude (bass_max_hz-midlow_max_hz) */
-    volatile uint32_t mid_high;             /* Mid-high magnitude (midlow_max_hz-midhigh_max_hz) */
-    volatile uint32_t treble;               /* Treble magnitude (midhigh_max_hz-Nyquist) */
+    volatile uint32_t bass;                 /* Bass magnitude sum (0-bass_max_hz) */
+    volatile uint32_t mid_low;              /* Mid-low magnitude sum (bass_max_hz-midlow_max_hz) */
+    volatile uint32_t mid_high;             /* Mid-high magnitude sum (midlow_max_hz-midhigh_max_hz) */
+    volatile uint32_t treble;               /* Treble magnitude sum (midhigh_max_hz-Nyquist) */
+    volatile uint32_t bass_avg;             /* Bass average magnitude per bin */
+    volatile uint32_t mid_low_avg;          /* Mid-low average magnitude per bin */
+    volatile uint32_t mid_high_avg;         /* Mid-high average magnitude per bin */
+    volatile uint32_t treble_avg;           /* Treble average magnitude per bin */
 };
 
 /* Sample buffer type (16-bit samples for 12-bit ADC) */
@@ -243,6 +247,10 @@ void main(void) {
     ctrl->mid_low = 0;
     ctrl->mid_high = 0;
     ctrl->treble = 0;
+    ctrl->bass_avg = 0;
+    ctrl->mid_low_avg = 0;
+    ctrl->mid_high_avg = 0;
+    ctrl->treble_avg = 0;
 
     /* Initialize ADC */
     init_adc(ctrl);
@@ -342,6 +350,10 @@ void main(void) {
                     uint32_t midlow_sum = 0;
                     uint32_t midhigh_sum = 0;
                     uint32_t treble_sum = 0;
+                    uint16_t bass_count = 0;
+                    uint16_t midlow_count = 0;
+                    uint16_t midhigh_count = 0;
+                    uint16_t treble_count = 0;
 
                     /* Calculate bin boundaries based on configurable frequency ranges */
                     const uint16_t bass_end = FREQ_TO_BIN(ctrl->bass_max_hz);
@@ -355,20 +367,30 @@ void main(void) {
 
                         if (bin <= bass_end) {
                             bass_sum += mag_sq;
+                            bass_count++;
                         } else if (bin <= midlow_end) {
                             midlow_sum += mag_sq;
+                            midlow_count++;
                         } else if (bin <= midhigh_end) {
                             midhigh_sum += mag_sq;
+                            midhigh_count++;
                         } else {
                             treble_sum += mag_sq;
+                            treble_count++;
                         }
                     }
 
-                    /* Write results to control block */
+                    /* Write sum results to control block */
                     ctrl->bass = bass_sum;
                     ctrl->mid_low = midlow_sum;
                     ctrl->mid_high = midhigh_sum;
                     ctrl->treble = treble_sum;
+
+                    /* Calculate and write average results (avoid division by zero) */
+                    ctrl->bass_avg = bass_count > 0 ? bass_sum / bass_count : 0;
+                    ctrl->mid_low_avg = midlow_count > 0 ? midlow_sum / midlow_count : 0;
+                    ctrl->mid_high_avg = midhigh_count > 0 ? midhigh_sum / midhigh_count : 0;
+                    ctrl->treble_avg = treble_count > 0 ? treble_sum / treble_count : 0;
                 }
 
                 /* Return to sampling status */

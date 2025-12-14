@@ -46,10 +46,14 @@ type AudioControlBlock struct {
 	FFTCount         uint32  // Number of FFTs computed
 	FFTTimeCycles    uint32  // Last FFT processing time (PRU cycles)
 	FFTSkipped       uint32  // FFTs skipped due to timing overrun
-	Bass             uint32  // Bass magnitude (0-bass_max_hz)
-	MidLow           uint32  // Mid-low magnitude (bass_max_hz-midlow_max_hz)
-	MidHigh          uint32  // Mid-high magnitude (midlow_max_hz-midhigh_max_hz)
-	Treble           uint32  // Treble magnitude (midhigh_max_hz-Nyquist)
+	Bass             uint32  // Bass magnitude sum (0-bass_max_hz)
+	MidLow           uint32  // Mid-low magnitude sum (bass_max_hz-midlow_max_hz)
+	MidHigh          uint32  // Mid-high magnitude sum (midlow_max_hz-midhigh_max_hz)
+	Treble           uint32  // Treble magnitude sum (midhigh_max_hz-Nyquist)
+	BassAvg          uint32  // Bass average magnitude per bin
+	MidLowAvg        uint32  // Mid-low average magnitude per bin
+	MidHighAvg       uint32  // Mid-high average magnitude per bin
+	TrebleAvg        uint32  // Treble average magnitude per bin
 }
 
 // sampleCmd represents the sample command
@@ -171,15 +175,23 @@ func runSample(cmd *cobra.Command, args []string) {
 			)
 
 			fmt.Printf("\n")
-			fmt.Printf("Bass: %10d | Mid-Low: %10d | Mid-High: %10d | Treble: %10d",
+			fmt.Printf("Sum | Bass: %10d | Mid-Low: %10d | Mid-High: %10d | Treble: %10d",
 				ctrl.Bass,
 				ctrl.MidLow,
 				ctrl.MidHigh,
 				ctrl.Treble,
 			)
 
-			// Move cursor up to overwrite previous output (now 2 lines)
-			fmt.Print("\033[2A")
+			fmt.Printf("\n")
+			fmt.Printf("Avg | Bass: %10d | Mid-Low: %10d | Mid-High: %10d | Treble: %10d",
+				ctrl.BassAvg,
+				ctrl.MidLowAvg,
+				ctrl.MidHighAvg,
+				ctrl.TrebleAvg,
+			)
+
+			// Move cursor up to overwrite previous output (now 3 lines)
+			fmt.Print("\033[3A")
 		}
 	}
 }
