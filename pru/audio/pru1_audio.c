@@ -159,6 +159,16 @@ static inline void trigger_adc(void) {
     ADC_TSC.STEPENABLE = (1 << 1);
 }
 
+/* Reset PRU cycle counter to prevent overflow in timing measurements */
+static inline void reset_counter(void) {
+    /* Reset counter to 0 by disabling and re-enabling */
+    PRU1_CTRL.CTRL_bit.CTR_EN = 0;
+    PRU1_CTRL.CTRL_bit.CTR_EN = 1;
+
+    /* Reset counter to 0 by writing directly to CYCLE register */
+    PRU1_CTRL.CYCLE = 0;
+}
+
 /* Main function - High-speed 40 kHz ADC sampling with double buffering and FFT */
 void main(void) {
     struct audio_control_block *ctrl = (struct audio_control_block *)(PRU_SHARED_MEM + AUDIO_CONTROL_BLOCK);
@@ -169,7 +179,7 @@ void main(void) {
     sample_t *completed_buffer;
     uint32_t buffer_index;
     uint16_t sample;
-    uint32_t fft_start_time, fft_end_time;
+    uint32_t fft_end_time;
 
     /* Enable PRU cycle counter */
     PRU1_CTRL.CTRL_bit.CTR_EN = 1;
@@ -266,8 +276,8 @@ void main(void) {
             /* Process FFT on completed buffer */
             ctrl->status = STATUS_FFT_PROC;
 
-            /* Record start time */
-            fft_start_time = PRU1_CTRL.CYCLE;
+            /* Reset cycle counter to prevent overflow during timing */
+            reset_counter();
 
             /* Initialize FFT with completed buffer samples */
             fft_init(fft_buf, (const int16_t *)completed_buffer);
@@ -275,11 +285,9 @@ void main(void) {
             /* Compute FFT */
             fft_compute(fft_buf);
 
-            /* Record end time */
+            /* Record FFT processing time (cycles elapsed since reset) */
             fft_end_time = PRU1_CTRL.CYCLE;
-
-            /* Calculate FFT processing time */
-            ctrl->fft_time_cycles = fft_end_time - fft_start_time;
+            ctrl->fft_time_cycles = fft_end_time;
             ctrl->fft_count++;
 
             /* Return to sampling status */
