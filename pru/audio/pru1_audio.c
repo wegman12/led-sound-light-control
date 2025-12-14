@@ -32,12 +32,26 @@ struct audio_control_block {
     volatile uint32_t reserved[13];     /* Reserved for future use (64 bytes total) */
 };
 
-/* Delay function using PRU cycle counter */
-static void delay_cycles(uint32_t cycles) {
-    uint32_t start = PRU1_CTRL.CYCLE;
-    while ((PRU1_CTRL.CYCLE - start) < cycles) {
-        /* Wait */
-    }
+/* PRU Cycle Counter Functions */
+static inline void reset_counter(void) {
+    /* Reset counter to 0 by disabling and re-enabling */
+    PRU1_CTRL.CTRL_bit.CTR_EN = 0;
+    PRU1_CTRL.CTRL_bit.CTR_EN = 1;
+
+    /* Reset counter to 0 by writing directly to CYCLE register */
+    PRU1_CTRL.CYCLE = 0;
+}
+
+/* Delay for approximately 1 second */
+/* Use same delay pattern as PRU0: 5x 200ms delays */
+static void delay_one_second(void) {
+    /* 40M cycles = 200ms @ 200MHz (same as PRU0's COOLDOWN_AFTER_SUCCESS) */
+    /* Do this 5 times for 1 second total */
+    __delay_cycles(40000000);
+    __delay_cycles(40000000);
+    __delay_cycles(40000000);
+    __delay_cycles(40000000);
+    __delay_cycles(40000000);
 }
 
 /* Main function - Simple test loop */
@@ -63,7 +77,10 @@ void main(void) {
         /* Toggle bit */
         ctrl->toggle_bit = (ctrl->toggle_bit == 0) ? 1 : 0;
 
-        /* Wait 1 second (200 million cycles @ 200 MHz) */
-        delay_cycles(CYCLES_PER_SECOND);
+        /* Wait 1 second */
+        delay_one_second();
+
+        /* Reset counter AFTER delay to match PRU0 pattern */
+        reset_counter();
     }
 }

@@ -395,7 +395,14 @@ Before implementing PRU1, verify no conflicts with PRU0:
 
 ## Session Recovery
 
-If session is interrupted, reference this plan and ask:
-"Continue PRU1 audio implementation from Stage [X]"
+If session is interrupted:
+1. **Read SESSION_LOG.md first** - Contains detailed progress, current issues, and next steps
+2. Reference this plan for overall architecture and stage descriptions
+3. Check git commits for traceability
 
-Current implementation stage will be tracked in git commits and todo list.
+Ask: "Continue PRU1 audio implementation from Stage [X]"
+
+Current implementation stage tracked in:
+- **SESSION_LOG.md** - Detailed session notes and current blockers
+- Git commits - Code changes and progress
+- Todo list - Active task tracking
