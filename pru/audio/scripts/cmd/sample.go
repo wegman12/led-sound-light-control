@@ -23,13 +23,19 @@ const (
 	maxSamples = 32
 )
 
-// AudioControlBlock represents the PRU1 audio control block
+// AudioControlBlock represents the PRU1 audio control block (64 bytes)
 type AudioControlBlock struct {
-	Status      uint32
-	SampleCount uint32
-	SampleIndex uint32
-	ADCErrors   uint32
-	Samples     [maxSamples]uint32
+	Status           uint32  // PRU running status
+	TotalSamples     uint32  // Total samples collected
+	BufferCount      uint32  // Number of completed buffers
+	CurrentBuffer    uint32  // 0 = Buffer A, 1 = Buffer B
+	SamplesInBuffer  uint32  // Current sample count in active buffer
+	ADCTimeouts      uint32  // ADC timeout errors
+	MissedSamples    uint32  // Missed samples (overruns)
+	LastSample       uint32  // Most recent sample value
+	MinSample        uint32  // Minimum sample value
+	MaxSample        uint32  // Maximum sample value
+	Reserved         [6]uint32  // Reserved for future use
 }
 
 // sampleCmd represents the sample command
@@ -76,16 +82,17 @@ func runSample(cmd *cobra.Command, args []string) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	fmt.Println("PRU1 Audio Sampling Monitor")
-	fmt.Println("============================")
-	fmt.Println("Reading ADC samples from AIN1...")
+	fmt.Println("PRU1 Audio Sampling Monitor - 40 kHz IEP Timer Mode")
+	fmt.Println("====================================================")
+	fmt.Println("High-speed ADC sampling from AIN1 at 40 kHz")
 	fmt.Println("Press Ctrl+C to exit")
 	fmt.Println()
 
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
-	lastSampleCount := uint32(0)
+	lastTotalSamples := uint32(0)
+	lastBufferCount := uint32(0)
 
 	for {
 		select {
@@ -97,36 +104,45 @@ func runSample(cmd *cobra.Command, args []string) {
 			// Read control block
 			ctrl := (*AudioControlBlock)(controlBlockPtr)
 
+			// Calculate rates
+			samplesPerSec := ctrl.TotalSamples - lastTotalSamples
+			buffersPerSec := ctrl.BufferCount - lastBufferCount
+			lastTotalSamples = ctrl.TotalSamples
+			lastBufferCount = ctrl.BufferCount
+
 			// Display status
 			statusStr := decodeStatus(ctrl.Status)
-			sampleRate := ctrl.SampleCount - lastSampleCount
-			lastSampleCount = ctrl.SampleCount
+			currentBuf := "A"
+			if ctrl.CurrentBuffer == 1 {
+				currentBuf = "B"
+			}
 
-			fmt.Printf("\rStatus: %s | Samples: %d | Rate: %d/s | Errors: %d | Index: %d",
+			// Calculate voltage from ADC value (12-bit, 0-4095, 0-1.8V)
+			lastVoltage := float64(ctrl.LastSample) * 1.8 / 4095.0
+			minVoltage := float64(ctrl.MinSample) * 1.8 / 4095.0
+			maxVoltage := float64(ctrl.MaxSample) * 1.8 / 4095.0
+
+			fmt.Printf("\r%-10s | Rate: %5d Hz | Buffers: %6d (%d/s) | Buf: %s [%4d/%4d] | Timeouts: %4d",
 				statusStr,
-				ctrl.SampleCount,
-				sampleRate,
-				ctrl.ADCErrors,
-				ctrl.SampleIndex,
+				samplesPerSec,
+				ctrl.BufferCount,
+				buffersPerSec,
+				currentBuf,
+				ctrl.SamplesInBuffer,
+				1024,
+				ctrl.ADCTimeouts,
 			)
 
-			// Display last 8 samples
-			fmt.Print(" | Last 8: [")
-			startIdx := int(ctrl.SampleIndex) - 8
-			if startIdx < 0 {
-				startIdx += maxSamples
-			}
+			fmt.Printf("\n")
+			fmt.Printf("Last: %4d (%.3fV) | Min: %4d (%.3fV) | Max: %4d (%.3fV) | Total: %10d samples",
+				ctrl.LastSample, lastVoltage,
+				ctrl.MinSample, minVoltage,
+				ctrl.MaxSample, maxVoltage,
+				ctrl.TotalSamples,
+			)
 
-			for i := 0; i < 8; i++ {
-				idx := (startIdx + i) % maxSamples
-				sample := ctrl.Samples[idx]
-
-				if i > 0 {
-					fmt.Print(", ")
-				}
-				fmt.Printf("%4d", sample)
-			}
-			fmt.Print("]")
+			// Move cursor up to overwrite previous output
+			fmt.Print("\033[1A")
 		}
 	}
 }
@@ -138,9 +154,11 @@ func decodeStatus(status uint32) string {
 		return "RUNNING"
 	case 0x41444349: // "ADCI"
 		return "ADC_INIT"
-	case 0x41445353: // "ADSS"
+	case 0x49455049: // "IEPI"
+		return "IEP_INIT"
+	case 0x53414D50: // "SAMP"
 		return "SAMPLING"
 	default:
-		return fmt.Sprintf("UNKNOWN(0x%08X)", status)
+		return fmt.Sprintf("UNK(0x%08X)", status)
 	}
 }

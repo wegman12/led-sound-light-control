@@ -1,8 +1,8 @@
 /*
  * PRU1 Audio Sampling Firmware
  *
- * Samples audio from AIN1 using direct ADC hardware access.
- * Test version: Samples at ~10 Hz and stores results in shared memory.
+ * High-speed audio sampling from AIN1 at 40 kHz using IEP timer.
+ * Uses double buffering for continuous sampling while processing.
  *
  * Author: Generated with Claude Code
  * Target: BeagleBone Black PRU1 (AM335x)
@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <pru_ctrl.h>
 #include <pru_cfg.h>
+#include <pru_iep.h>
 #include <sys_tscAdcSs.h>
 #include "resource_table_empty.h"
 
@@ -18,9 +19,19 @@
 #define PRU_SHARED_MEM      0x00010000
 #define AUDIO_CONTROL_BLOCK 0x00002000  /* Offset 8KB in shared memory (after PRU0's 4KB) */
 
-/* PRU Clock: 200 MHz = 5 ns per cycle */
+/* PRU1 Local DRAM - Double Buffer Layout */
+#define BUFFER_SIZE         1024        /* Samples per buffer (power of 2) */
+#define BUFFER_A_OFFSET     0x0000      /* Buffer A at start of PRU1 DRAM */
+#define BUFFER_B_OFFSET     0x0800      /* Buffer B at 2KB offset (1024 samples × 2 bytes) */
+
+/* PRU and IEP Clock: 200 MHz = 5 ns per cycle */
 #define PRU_CLOCK_HZ        200000000
-#define CYCLES_PER_SECOND   200000000
+#define IEP_CLOCK_HZ        200000000
+
+/* Sampling Configuration */
+#define SAMPLE_RATE_HZ      40000       /* 40 kHz sampling rate */
+#define SAMPLE_PERIOD_NS    25000       /* 25 μs = 25,000 ns */
+#define IEP_CMP_VALUE       5000        /* 5,000 cycles @ 200 MHz = 25 μs */
 
 /* Control Module registers to enable the ADC peripheral */
 #define CM_WKUP_CLKSTCTRL  (*((volatile uint32_t *)0x44E00400))
@@ -29,35 +40,52 @@
 /* Status Codes */
 #define STATUS_RUNNING      0x41554431  /* "AUD1" in ASCII - indicates PRU1 audio is running */
 #define STATUS_ADC_INIT     0x41444349  /* "ADCI" in ASCII - ADC initialized */
-#define STATUS_ADC_SAMPLING 0x41445353  /* "ADSS" in ASCII - ADC sampling */
+#define STATUS_IEP_INIT     0x49455049  /* "IEPI" in ASCII - IEP initialized */
+#define STATUS_SAMPLING     0x53414D50  /* "SAMP" in ASCII - High-speed sampling active */
 
-/* Sample Buffer Size */
-#define MAX_SAMPLES         32  /* Store last 32 samples */
-
-/* Audio Control Block Structure */
+/* Audio Control Block Structure (in shared memory) */
 struct audio_control_block {
-    volatile uint32_t status;           /* PRU running status */
-    volatile uint32_t sample_count;     /* Total samples collected */
-    volatile uint32_t sample_index;     /* Current index in sample buffer (0-31) */
-    volatile uint32_t adc_errors;       /* ADC error count */
-    volatile uint32_t samples[MAX_SAMPLES];  /* Ring buffer of recent samples */
-    volatile uint32_t reserved[12];     /* Reserved for future use (128 bytes total) */
+    volatile uint32_t status;               /* PRU running status */
+    volatile uint32_t total_samples;        /* Total samples collected */
+    volatile uint32_t buffer_count;         /* Number of completed buffers */
+    volatile uint32_t current_buffer;       /* 0 = Buffer A, 1 = Buffer B */
+    volatile uint32_t samples_in_buffer;    /* Current sample count in active buffer */
+    volatile uint32_t adc_timeouts;         /* ADC timeout errors */
+    volatile uint32_t missed_samples;       /* Missed samples (overruns) */
+    volatile uint32_t last_sample;          /* Most recent sample value */
+    volatile uint32_t min_sample;           /* Minimum sample value */
+    volatile uint32_t max_sample;           /* Maximum sample value */
+    volatile uint32_t reserved[6];          /* Reserved for future use (64 bytes total) */
 };
 
-/* PRU Cycle Counter Functions */
-static inline void reset_counter(void) {
-    /* Reset counter to 0 by disabling and re-enabling */
-    PRU1_CTRL.CTRL_bit.CTR_EN = 0;
-    PRU1_CTRL.CTRL_bit.CTR_EN = 1;
+/* Sample buffer type (16-bit samples for 12-bit ADC) */
+typedef uint16_t sample_t;
 
-    /* Reset counter to 0 by writing directly to CYCLE register */
-    PRU1_CTRL.CYCLE = 0;
-}
+/* Initialize IEP timer for 40 kHz periodic events */
+static void init_iep_timer(void) {
+    /* Disable IEP timer */
+    CT_IEP.TMR_GLB_CFG_bit.CNT_EN = 0;
 
-/* Delay for approximately 100ms (10 Hz sampling rate) */
-static void delay_100ms(void) {
-    /* 100ms = 20,000,000 cycles @ 200 MHz */
-    __delay_cycles(20000000);
+    /* Clear counter */
+    CT_IEP.TMR_CNT = 0;
+
+    /* Clear overflow status */
+    CT_IEP.TMR_GLB_STS_bit.CNT_OVF = 1;
+
+    /* Set compare value for 40 kHz (25 μs = 5,000 cycles @ 200 MHz) */
+    CT_IEP.TMR_CMP0 = IEP_CMP_VALUE;
+
+    /* Configure CMP0 to reset counter on match (for continuous periodic events) */
+    CT_IEP.TMR_CMP_CFG_bit.CMP0_RST_CNT_EN = 1;
+
+    /* Enable CMP0 */
+    CT_IEP.TMR_CMP_CFG_bit.CMP_EN = 0x01;  /* Enable CMP0 (bit 0) */
+
+    /* Set default increment to 1 (count every clock cycle) */
+    CT_IEP.TMR_GLB_CFG_bit.DEFAULT_INC = 1;
+
+    /* Enable IEP timer */
+    CT_IEP.TMR_GLB_CFG_bit.CNT_EN = 1;
 }
 
 /* Initialize ADC for sampling AIN1 */
@@ -105,49 +133,36 @@ static void init_adc(struct audio_control_block *ctrl) {
     ctrl->status = STATUS_ADC_INIT;
 }
 
-/* Trigger and read one sample from ADC */
-static uint32_t read_adc_sample(struct audio_control_block *ctrl) {
-    uint32_t fifo_count;
+/* Fast ADC sample read (assumes data is ready in FIFO) */
+static inline uint16_t read_adc_sample_fast(void) {
     uint32_t fifo_data;
-    uint32_t sample_value;
-    uint32_t timeout;
 
-    /* Clear any stale data from FIFO0 */
-    fifo_count = ADC_TSC.FIFO0COUNT;
-    while (fifo_count > 0) {
-        fifo_data = ADC_TSC.FIFO0DATA;  /* Read and discard */
-        fifo_count = ADC_TSC.FIFO0COUNT;
+    /* Check if data available */
+    if (ADC_TSC.FIFO0COUNT > 0) {
+        /* Read from FIFO */
+        fifo_data = ADC_TSC.FIFO0DATA;
+        /* Extract 12-bit sample value from bits [11:0] */
+        return (uint16_t)(fifo_data & 0xFFF);
     }
 
-    /* Trigger a new capture by enabling step 1 */
-    ADC_TSC.STEPENABLE = (1 << 1);
-
-    /* Wait for FIFO to have data (with timeout) */
-    timeout = 10000;  /* ~50us timeout @ 200 MHz */
-    while (ADC_TSC.FIFO0COUNT == 0 && timeout > 0) {
-        timeout--;
-    }
-
-    if (timeout == 0) {
-        /* Timeout - no data available */
-        ctrl->adc_errors++;
-        return 0;
-    }
-
-    /* Read from FIFO */
-    fifo_data = ADC_TSC.FIFO0DATA;
-
-    /* Extract 12-bit sample value from bits [11:0] */
-    sample_value = fifo_data & 0xFFF;
-
-    return sample_value;
+    /* No data - return 0 (indicates error) */
+    return 0;
 }
 
-/* Main function - ADC sampling loop */
+/* Trigger ADC conversion */
+static inline void trigger_adc(void) {
+    /* Trigger step 1 for AIN1 capture */
+    ADC_TSC.STEPENABLE = (1 << 1);
+}
+
+/* Main function - High-speed 40 kHz ADC sampling with double buffering */
 void main(void) {
     struct audio_control_block *ctrl = (struct audio_control_block *)(PRU_SHARED_MEM + AUDIO_CONTROL_BLOCK);
-    uint32_t sample;
-    uint32_t i;
+    sample_t *buffer_a = (sample_t *)BUFFER_A_OFFSET;  /* Buffer A in PRU1 DRAM */
+    sample_t *buffer_b = (sample_t *)BUFFER_B_OFFSET;  /* Buffer B in PRU1 DRAM */
+    sample_t *current_buffer;
+    uint32_t buffer_index;
+    uint16_t sample;
 
     /* Enable PRU cycle counter */
     PRU1_CTRL.CTRL_bit.CTR_EN = 1;
@@ -157,39 +172,89 @@ void main(void) {
 
     /* Initialize control block */
     ctrl->status = STATUS_RUNNING;
-    ctrl->sample_count = 0;
-    ctrl->sample_index = 0;
-    ctrl->adc_errors = 0;
-
-    /* Clear sample buffer */
-    for (i = 0; i < MAX_SAMPLES; i++) {
-        ctrl->samples[i] = 0;
-    }
+    ctrl->total_samples = 0;
+    ctrl->buffer_count = 0;
+    ctrl->current_buffer = 0;  /* Start with Buffer A */
+    ctrl->samples_in_buffer = 0;
+    ctrl->adc_timeouts = 0;
+    ctrl->missed_samples = 0;
+    ctrl->last_sample = 0;
+    ctrl->min_sample = 4095;   /* Start at max */
+    ctrl->max_sample = 0;      /* Start at min */
 
     /* Initialize ADC */
     init_adc(ctrl);
 
-    /* Update status to indicate sampling has started */
-    ctrl->status = STATUS_ADC_SAMPLING;
+    /* Initialize IEP timer for 40 kHz sampling */
+    init_iep_timer();
+    ctrl->status = STATUS_IEP_INIT;
 
-    /* Main sampling loop - read ADC at ~10 Hz */
+    /* Set initial buffer to Buffer A */
+    current_buffer = buffer_a;
+    buffer_index = 0;
+
+    /* Trigger first ADC conversion */
+    trigger_adc();
+
+    /* Update status to indicate high-speed sampling is active */
+    ctrl->status = STATUS_SAMPLING;
+
+    /* Main sampling loop - 40 kHz continuous sampling */
     while (1) {
-        /* Reset cycle counter to avoid overflow */
-        reset_counter();
+        /* Wait for IEP CMP0 event (40 kHz tick) */
+        while ((CT_IEP.TMR_CMP_STS & 0x01) == 0) {
+            /* Busy wait for CMP0 event */
+            /* This tight loop ensures minimal jitter */
+        }
 
-        /* Read ADC sample */
-        sample = read_adc_sample(ctrl);
+        /* Clear CMP0 status by writing 1 */
+        CT_IEP.TMR_CMP_STS = 0x01;
 
-        /* Store sample in ring buffer */
-        ctrl->samples[ctrl->sample_index] = sample;
+        /* Read ADC sample (from previous trigger) */
+        sample = read_adc_sample_fast();
 
-        /* Update index (wrap around at MAX_SAMPLES) */
-        ctrl->sample_index = (ctrl->sample_index + 1) % MAX_SAMPLES;
+        /* Check if we got a valid sample */
+        if (sample == 0 && ADC_TSC.FIFO0COUNT == 0) {
+            /* Timeout - ADC didn't complete in time */
+            ctrl->adc_timeouts++;
+        }
 
-        /* Increment total sample count */
-        ctrl->sample_count++;
+        /* Trigger next ADC conversion immediately */
+        trigger_adc();
 
-        /* Wait 100ms before next sample (10 Hz rate) */
-        delay_100ms();
+        /* Store sample in current buffer */
+        current_buffer[buffer_index] = sample;
+        buffer_index++;
+
+        /* Update statistics */
+        ctrl->last_sample = sample;
+        if (sample < ctrl->min_sample && sample > 0) ctrl->min_sample = sample;
+        if (sample > ctrl->max_sample) ctrl->max_sample = sample;
+        ctrl->total_samples++;
+
+        /* Check if buffer is full */
+        if (buffer_index >= BUFFER_SIZE) {
+            /* Buffer complete - swap to other buffer */
+            ctrl->buffer_count++;
+
+            /* Swap buffers */
+            if (ctrl->current_buffer == 0) {
+                /* Switch to Buffer B */
+                current_buffer = buffer_b;
+                ctrl->current_buffer = 1;
+            } else {
+                /* Switch to Buffer A */
+                current_buffer = buffer_a;
+                ctrl->current_buffer = 0;
+            }
+
+            /* Reset buffer index */
+            buffer_index = 0;
+
+            /* TODO: In future, set flag for FFT processing on completed buffer */
+        }
+
+        /* Update current position */
+        ctrl->samples_in_buffer = buffer_index;
     }
 }
