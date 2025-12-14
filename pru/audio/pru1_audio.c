@@ -45,13 +45,8 @@ static inline void reset_counter(void) {
 /* Delay for approximately 1 second */
 /* Use same delay pattern as PRU0: 5x 200ms delays */
 static void delay_one_second(void) {
-    /* 40M cycles = 200ms @ 200MHz (same as PRU0's COOLDOWN_AFTER_SUCCESS) */
-    /* Do this 5 times for 1 second total */
-    __delay_cycles(40000000);
-    __delay_cycles(40000000);
-    __delay_cycles(40000000);
-    __delay_cycles(40000000);
-    __delay_cycles(40000000);
+    /* Delay for 200000000 cycles, 5ns cycles - 1 seconds */
+    __delay_cycles(200000000);
 }
 
 /* Main function - Simple test loop */
@@ -71,6 +66,9 @@ void main(void) {
 
     /* Main test loop - toggle bit every second */
     while (1) {
+        /* Reset counter AFTER delay to match PRU0 pattern */
+        reset_counter();
+
         /* Increment counter */
         ctrl->counter++;
 
@@ -79,8 +77,5 @@ void main(void) {
 
         /* Wait 1 second */
         delay_one_second();
-
-        /* Reset counter AFTER delay to match PRU0 pattern */
-        reset_counter();
     }
 }
