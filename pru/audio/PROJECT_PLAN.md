@@ -406,3 +406,143 @@ Current implementation stage tracked in:
 - **SESSION_LOG.md** - Detailed session notes and current blockers
 - Git commits - Code changes and progress
 - Todo list - Active task tracking
+
+### Stage 12: Systemd Integration for Auto-Start
+**Objective**: Configure PRU1 audio firmware to start automatically on boot
+
+**Files to create/modify**:
+- `systemd/enable-audio-pru.service` - Systemd service for PRU1
+- `systemd/led-sound-light-control.service` - Add audio PRU dependency
+- `systemd/Makefile` - Add audio service to deployment
+
+**Service configuration**:
+- Start PRU1 (remoteproc2) on boot
+- Wait for remoteproc subsystem availability
+- Make main application depend on audio PRU
+- Enable/disable via systemd commands
+
+**Deployment**:
+```bash
+cd systemd
+make install        # Deploy and enable services
+make start          # Start services
+make status         # Verify status
+```
+
+**Git commit**: "Add systemd service for PRU1 audio auto-start"
+
+---
+
+## CURRENT STATUS (2025-12-14)
+
+### ✅ Completed Stages
+
+**Stage 1-3: Project Setup** ✓
+- Project structure and build system configured
+- Makefile with deployment capabilities
+- SESSION_LOG.md tracking
+
+**Stage 4-6: ADC Configuration** ✓
+- Disabled IIO ADC driver in uEnv.txt
+- Direct PRU hardware access to ADC
+- ADC clock enablement via Control Module
+- Successfully sampling at 40 kHz
+
+**Stage 8a: 40 kHz IEP Timer Sampling** ✓
+- IEP timer configured for 40 kHz (25 μs period)
+- Double buffering (2x 1024 samples)
+- Achieved 39,993-40,012 Hz (±0.03% accuracy)
+- Zero ADC timeouts
+
+**Stage 8b: Fixed-Point FFT** ✓
+- 1024-point Radix-2 Cooley-Tukey FFT
+- Q15 fixed-point arithmetic
+- Pre-computed twiddle factors (512 values)
+- FFT processing: 2.38 ms (476,000 cycles @ 200 MHz)
+- Well under <10 ms target
+
+**Stage 8c: Magnitude Calculation and Frequency Binning** ✓
+- 4 configurable frequency bands
+- Magnitude squared calculation for all 512 bins
+- Accumulation into Bass, Mid-Low, Mid-High, Treble
+- Both sum and average values per band
+
+**Stage 8d: Control Block Integration** ✓
+- Configuration section (FFT enable, frequency boundaries)
+- Status section (samples, buffers, timing, frequency bands)
+- Runtime configuration via shared memory
+- Smart initialization with default values
+- Enable/disable FFT without stopping sampling
+
+**Stage 9: Sound Profile Streaming Command** ✓
+- `audio-util stream` command
+- Real-time visualization with bar graphs
+- 4 Hz update rate, smooth terminal display
+- FFT rate monitoring and statistics
+
+**Stage 11: Go API Integration** ✓
+- Renamed `api/sound` → `api/audio`
+- `pru_sampler.go` - PRU1 memory-mapped interface
+- `pru_models.go` - SoundProfile, PRUStatus structures
+- `pru_manager.go` - Streaming manager with channels
+- Ready for LED controller integration
+
+### 🔄 In Progress
+
+**Stage 12: Systemd Integration** ⚠️ STARTED
+- Need to create `enable-audio-pru.service`
+- Need to update main service dependencies
+- Need to update Makefile
+- Need to deploy and test
+
+**Next Steps**:
+1. Create systemd service file for PRU1
+2. Add as dependency in led-sound-light-control.service
+3. Update systemd Makefile
+4. Deploy and verify auto-start on boot
+
+### ⏸️ Pending Stages
+
+**Stage 10: Full System Testing** - DEFERRED
+- Requires audio playback capability
+- Test with bass-heavy tracks, high-frequency content
+- Validate frequency band response to music
+- Performance testing under load
+
+### 📊 Current Performance
+
+- **Sampling Rate**: 40 kHz (±0.03% accuracy)
+- **FFT Processing**: 2.38 ms per buffer
+- **Effective Rate**: 36.6 kHz (with FFT overhead)
+- **Buffer Fill Time**: 25.6 ms (1024 samples @ 40 kHz)
+- **FFTs per Second**: ~36 (matches buffer rate)
+- **ADC Timeouts**: 0
+- **FFTs Skipped**: 0
+
+### 📁 Key Files
+
+**PRU Firmware**:
+- `pru/audio/pru1_audio.c` - Main firmware (40 kHz sampling + FFT)
+- `pru/audio/fft.c` - Fixed-point FFT implementation
+- `pru/audio/fft.h` - Q15 types and structures
+- `pru/audio/Makefile` - Build and deployment
+
+**Go Utilities**:
+- `pru/audio/scripts/cmd/sample.go` - Detailed monitoring
+- `pru/audio/scripts/cmd/stream.go` - Real-time visualization
+
+**Go API**:
+- `api/audio/pru_sampler.go` - Low-level PRU interface
+- `api/audio/pru_models.go` - Data structures
+- `api/audio/pru_manager.go` - High-level streaming
+
+**Configuration**:
+- `dto/uEnv.txt` - IIO ADC driver disabled
+
+### 🎯 Next Session Goals
+
+1. Complete Stage 12 (Systemd Integration)
+2. Test PRU1 auto-start on boot
+3. Verify LED application can access audio profiles
+4. (Future) Stage 10: Test with actual music when available
+
