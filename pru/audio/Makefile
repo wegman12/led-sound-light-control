@@ -76,7 +76,7 @@ $(TARGET): $(OBJECT) $(LDFILE)
 clean:
 	@echo "Cleaning PRU1 audio build artifacts..."
 	@rm -rf $(GEN_DIR)
-	@cd $(SCRIPTS_DIR) && $(GOCLEAN) && rm -f $(UTIL_BINARY) $(UTIL_BINARY_BBB)
+	@if [ -d $(SCRIPTS_DIR) ]; then cd $(SCRIPTS_DIR) && $(GOCLEAN) && rm -f $(UTIL_BINARY) $(UTIL_BINARY_BBB); fi
 	@echo "Clean complete"
 
 # Install firmware to BeagleBone /lib/firmware
