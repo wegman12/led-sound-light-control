@@ -23,7 +23,7 @@ const (
 	maxSamples = 32
 )
 
-// AudioControlBlock represents the PRU1 audio control block (64 bytes)
+// AudioControlBlock represents the PRU1 audio control block
 type AudioControlBlock struct {
 	Status           uint32  // PRU running status
 	TotalSamples     uint32  // Total samples collected
@@ -37,7 +37,10 @@ type AudioControlBlock struct {
 	MaxSample        uint32  // Maximum sample value
 	FFTCount         uint32  // Number of FFTs computed
 	FFTTimeCycles    uint32  // Last FFT processing time (PRU cycles)
-	Reserved         [4]uint32  // Reserved for future use
+	Bass             uint32  // Bass magnitude (0-150 Hz)
+	MidLow           uint32  // Mid-low magnitude (150-1000 Hz)
+	MidHigh          uint32  // Mid-high magnitude (1000-2000 Hz)
+	Treble           uint32  // Treble magnitude (2000-20000 Hz)
 }
 
 // sampleCmd represents the sample command
@@ -147,8 +150,16 @@ func runSample(cmd *cobra.Command, args []string) {
 				fftTimeUs/1000.0,
 			)
 
-			// Move cursor up to overwrite previous output
-			fmt.Print("\033[1A")
+			fmt.Printf("\n")
+			fmt.Printf("Bass: %10d | Mid-Low: %10d | Mid-High: %10d | Treble: %10d",
+				ctrl.Bass,
+				ctrl.MidLow,
+				ctrl.MidHigh,
+				ctrl.Treble,
+			)
+
+			// Move cursor up to overwrite previous output (now 2 lines)
+			fmt.Print("\033[2A")
 		}
 	}
 }

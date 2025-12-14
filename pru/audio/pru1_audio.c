@@ -34,6 +34,18 @@
 #define SAMPLE_PERIOD_NS    25000       /* 25 μs = 25,000 ns */
 #define IEP_CMP_VALUE       5000        /* 5,000 cycles @ 200 MHz = 25 μs */
 
+/* Frequency Bin Boundaries (in Hz) - Configurable */
+#define BASS_MAX_HZ         150         /* Bass: 0-150 Hz */
+#define MIDLOW_MAX_HZ       1000        /* Mid-Low: 150-1000 Hz */
+#define MIDHIGH_MAX_HZ      2000        /* Mid-High: 1000-2000 Hz */
+/* Treble: 2000 Hz to Nyquist (SAMPLE_RATE_HZ / 2) */
+
+/* Calculate FFT bin index from frequency: bin = (freq * FFT_SIZE) / SAMPLE_RATE_HZ
+ * FFT_SIZE is defined in fft.h as 1024
+ * For 40 kHz sampling: bin resolution = 40000 / 1024 = 39.0625 Hz/bin
+ */
+#define FREQ_TO_BIN(freq_hz) (((freq_hz) * FFT_SIZE) / SAMPLE_RATE_HZ)
+
 /* Control Module registers to enable the ADC peripheral */
 #define CM_WKUP_CLKSTCTRL  (*((volatile uint32_t *)0x44E00400))
 #define CM_WKUP_ADC_TSC_CLKCTRL  (*((volatile uint32_t *)0x44E004BC))
@@ -59,7 +71,10 @@ struct audio_control_block {
     volatile uint32_t max_sample;           /* Maximum sample value */
     volatile uint32_t fft_count;            /* Number of FFTs computed */
     volatile uint32_t fft_time_cycles;      /* Last FFT processing time (PRU cycles) */
-    volatile uint32_t reserved[4];          /* Reserved for future use (64 bytes total) */
+    volatile uint32_t bass;                 /* Bass magnitude (0-150 Hz, bins 0-3) */
+    volatile uint32_t mid_low;              /* Mid-low magnitude (150-1000 Hz, bins 4-25) */
+    volatile uint32_t mid_high;             /* Mid-high magnitude (1000-2000 Hz, bins 26-51) */
+    volatile uint32_t treble;               /* Treble magnitude (2000-20000 Hz, bins 52-511) */
 };
 
 /* Sample buffer type (16-bit samples for 12-bit ADC) */
@@ -200,6 +215,10 @@ void main(void) {
     ctrl->max_sample = 0;      /* Start at min */
     ctrl->fft_count = 0;
     ctrl->fft_time_cycles = 0;
+    ctrl->bass = 0;
+    ctrl->mid_low = 0;
+    ctrl->mid_high = 0;
+    ctrl->treble = 0;
 
     /* Initialize ADC */
     init_adc(ctrl);
@@ -290,10 +309,45 @@ void main(void) {
             ctrl->fft_time_cycles = fft_end_time;
             ctrl->fft_count++;
 
+            /* Calculate magnitude and accumulate into frequency bins */
+            {
+                uint16_t bin;
+                uint32_t mag_sq;
+                uint32_t bass_sum = 0;
+                uint32_t midlow_sum = 0;
+                uint32_t midhigh_sum = 0;
+                uint32_t treble_sum = 0;
+
+                /* Calculate bin boundaries based on frequency ranges */
+                const uint16_t bass_end = FREQ_TO_BIN(BASS_MAX_HZ);
+                const uint16_t midlow_end = FREQ_TO_BIN(MIDLOW_MAX_HZ);
+                const uint16_t midhigh_end = FREQ_TO_BIN(MIDHIGH_MAX_HZ);
+                const uint16_t nyquist_bin = FFT_SIZE / 2;  /* Only first half has unique data */
+
+                /* Accumulate magnitudes for each frequency band */
+                for (bin = 0; bin < nyquist_bin; bin++) {
+                    mag_sq = fft_magnitude_squared(fft_buf->data[bin]);
+
+                    if (bin <= bass_end) {
+                        bass_sum += mag_sq;
+                    } else if (bin <= midlow_end) {
+                        midlow_sum += mag_sq;
+                    } else if (bin <= midhigh_end) {
+                        midhigh_sum += mag_sq;
+                    } else {
+                        treble_sum += mag_sq;
+                    }
+                }
+
+                /* Write results to control block */
+                ctrl->bass = bass_sum;
+                ctrl->mid_low = midlow_sum;
+                ctrl->mid_high = midhigh_sum;
+                ctrl->treble = treble_sum;
+            }
+
             /* Return to sampling status */
             ctrl->status = STATUS_SAMPLING;
-
-            /* TODO Stage 8c: Calculate magnitude and frequency bins */
         }
 
         /* Update current position */
