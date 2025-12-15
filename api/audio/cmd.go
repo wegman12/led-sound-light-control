@@ -148,6 +148,169 @@ func exportResults(ctx context.Context, resultChannel chan processing.Result, lo
 	}
 }
 
+type pruRecordConfig struct {
+	outputFile     string
+	sampleInterval time.Duration
+	duration       time.Duration
+	debug          bool
+}
+
+var pruRecordCfg pruRecordConfig
+
+func MakePRURecordCmd() *cobra.Command {
+	pruRecord := &cobra.Command{
+		Use:   "record-pru-audio",
+		Short: "Record PRU audio stream to CSV file",
+		Long:  `Continuously reads from the PRU1 audio sampler and writes sound profile data to a CSV file for analysis`,
+		RunE:  doPRURecord,
+	}
+
+	pruRecord.Flags().StringVarP(&pruRecordCfg.outputFile, "output", "o", "pru-audio-record.csv", "output CSV file path")
+	pruRecord.Flags().DurationVarP(&pruRecordCfg.sampleInterval, "interval", "i", 25*time.Millisecond, "sampling interval (time between reads)")
+	pruRecord.Flags().DurationVarP(&pruRecordCfg.duration, "duration", "t", 0, "recording duration (0 for unlimited, runs until Ctrl+C)")
+	pruRecord.Flags().BoolVarP(&pruRecordCfg.debug, "debug", "d", false, "enable debug logging")
+
+	return pruRecord
+}
+
+func doPRURecord(cmd *cobra.Command, args []string) error {
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+	defer stop()
+
+	// Add timeout if duration is specified
+	if pruRecordCfg.duration > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, pruRecordCfg.duration)
+		defer cancel()
+	}
+
+	// Initialize logger
+	var logger *zap.Logger
+	var err error
+	if pruRecordCfg.debug {
+		logger, err = zap.NewDevelopment()
+	} else {
+		logger, err = zap.NewProduction()
+	}
+	if err != nil {
+		fmt.Println("failed to initialize logger - using nop logger")
+		fmt.Println(err)
+		logger = zap.NewNop()
+	}
+	defer logger.Sync()
+
+	// Create PRU manager
+	manager, err := NewPRUManager(logger)
+	if err != nil {
+		logger.Fatal("failed to create PRU manager", zap.Error(err))
+	}
+	defer manager.Close()
+
+	// Create output file
+	f, err := os.Create(pruRecordCfg.outputFile)
+	if err != nil {
+		logger.Fatal("failed to create output file", zap.Error(err))
+	}
+	defer f.Close()
+
+	// Write CSV header
+	writePRUHeader(f)
+
+	logger.Info("Starting PRU audio recording",
+		zap.String("output_file", pruRecordCfg.outputFile),
+		zap.Duration("sample_interval", pruRecordCfg.sampleInterval),
+		zap.Duration("duration", pruRecordCfg.duration),
+	)
+
+	// Create channel for sound profiles
+	profileChannel := make(chan *SoundProfile, 100)
+
+	// Start the PRU manager
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err := manager.Start(profileChannel, pruRecordCfg.sampleInterval, ctx)
+		if err != nil {
+			logger.Error("PRU manager error", zap.Error(err))
+		}
+	}()
+
+	// Record data to CSV
+	recordCount := 0
+	startTime := time.Now()
+
+loop:
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("Recording stopped", zap.Int("samples_recorded", recordCount))
+			break loop
+
+		case profile := <-profileChannel:
+			elapsed := time.Since(startTime)
+
+			// Write CSV row
+			row := fmt.Sprintf("%d,%f,%d,%.2f,%.3f,%d,%d,%d,%d,%d,%d,%d,%d\n",
+				recordCount,
+				elapsed.Seconds(),
+				profile.FFTCount,
+				profile.FFTRate,
+				profile.FFTTimeMs,
+				profile.BassSum,
+				profile.MidLowSum,
+				profile.MidHighSum,
+				profile.TrebleSum,
+				profile.BassAvg,
+				profile.MidLowAvg,
+				profile.MidHighAvg,
+				profile.TrebleAvg,
+			)
+
+			if _, err := f.WriteString(row); err != nil {
+				logger.Error("failed to write to CSV", zap.Error(err))
+			}
+
+			recordCount++
+			if recordCount%100 == 0 {
+				logger.Info("Recording progress", zap.Int("samples", recordCount))
+			}
+		}
+	}
+
+	wg.Wait()
+	logger.Info("Recording complete",
+		zap.Int("total_samples", recordCount),
+		zap.Duration("total_duration", time.Since(startTime)),
+		zap.String("output_file", pruRecordCfg.outputFile),
+	)
+
+	return nil
+}
+
+func writePRUHeader(f *os.File) {
+	headers := []string{
+		"Sample",
+		"Timestamp (s)",
+		"FFT Count",
+		"FFT Rate (Hz)",
+		"FFT Time (ms)",
+		"Bass Sum",
+		"Mid-Low Sum",
+		"Mid-High Sum",
+		"Treble Sum",
+		"Bass Avg",
+		"Mid-Low Avg",
+		"Mid-High Avg",
+		"Treble Avg",
+	}
+
+	_, err := f.WriteString(strings.Join(headers, ",") + "\n")
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
 func writeHeader(f *os.File) {
 	binSize := float64(cfg.samplingRate) / float64(cfg.bufferSize)
 	binDescriptions := make([]string, cfg.bufferSize/2-1)

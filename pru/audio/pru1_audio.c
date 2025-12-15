@@ -361,8 +361,10 @@ void main(void) {
                     const uint16_t midhigh_end = FREQ_TO_BIN(ctrl->midhigh_max_hz);
                     const uint16_t nyquist_bin = FFT_SIZE / 2;  /* Only first half has unique data */
 
-                    /* Accumulate magnitudes for each frequency band */
-                    for (bin = 0; bin < nyquist_bin; bin++) {
+                    /* Accumulate magnitudes for each frequency band
+                     * Skip bin 0 (DC component) - it represents DC offset, not audio frequency
+                     */
+                    for (bin = 1; bin < nyquist_bin; bin++) {
                         mag_sq = fft_magnitude_squared(fft_buf->data[bin]);
 
                         if (bin <= bass_end) {

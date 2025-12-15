@@ -35,6 +35,7 @@ func Execute() {
 	rootCmd.AddCommand(light.MakeLedTesterCmd())
 	rootCmd.AddCommand(server.MakeServerCmd())
 	rootCmd.AddCommand(audio.MakeSoundTesterCmd())
+	rootCmd.AddCommand(audio.MakePRURecordCmd())
 	rootCmd.AddCommand(remote.MakeRemoteCmd())
 	err := rootCmd.Execute()
 	if err != nil {
