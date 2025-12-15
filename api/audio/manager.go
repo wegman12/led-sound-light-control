@@ -19,12 +19,12 @@ type Manager struct {
 	logger        *zap.Logger
 }
 
-func NewManager(bufferSize, samplingRate int, targetInputRate, bassCutoff, midCutoff float64, delayBetweenSamples, delayBetweenProcessing time.Duration, audioProvider behavior.AudioProvider, logger *zap.Logger) (*Manager, error) {
+func NewManager(bufferSize, samplingRate int, targetInputRate, bassCutoff, midHighCutoff, trebleCutoff float64, delayBetweenSamples, delayBetweenProcessing time.Duration, audioProvider behavior.AudioProvider, logger *zap.Logger) (*Manager, error) {
 	sampler, err := sampling.NewSampler(bufferSize, samplingRate, targetInputRate, delayBetweenSamples, logger)
 	if err != nil {
 		return nil, err
 	}
-	processor, err := processing.NewProcessor(delayBetweenProcessing, bassCutoff, midCutoff, logger)
+	processor, err := processing.NewProcessor(delayBetweenProcessing, bassCutoff, midHighCutoff, trebleCutoff, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -103,13 +103,10 @@ func (m *Manager) StreamToLights(ctx context.Context) {
 			return
 		case result := <-resultsChannel:
 			// Convert processing.Profile to behavior.AudioProfile
-			// Note: Current Profile has Bass, Mid, Treble
-			// Phase 5 will split Mid into MidLow and MidHigh
-			// For now, we split Mid evenly between MidLow and MidHigh
 			profile := behavior.AudioProfile{
 				Bass:      result.Profile.Bass,
-				MidLow:    result.Profile.Mid * 0.5,
-				MidHigh:   result.Profile.Mid * 0.5,
+				MidLow:    result.Profile.MidLow,
+				MidHigh:   result.Profile.MidHigh,
 				Treble:    result.Profile.Treble,
 				Timestamp: time.Now(),
 			}

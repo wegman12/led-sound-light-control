@@ -53,12 +53,14 @@ type AudioScalingConfig struct {
 }
 
 // Default audio configuration (from analysis in analysis/audio/)
+// Frequency bands match PRU configuration: Bass (0-150Hz), MidLow (150-1000Hz), MidHigh (1000-2000Hz), Treble (2000Hz+)
 const (
 	defaultBufferSize           = 2048
 	defaultSamplingRate         = 16000
 	defaultTargetInputRate      = 8000.0
-	defaultBassCutoff           = 250.0
-	defaultMidCutoff            = 2000.0
+	defaultBassCutoff           = 150.0
+	defaultMidHighCutoff        = 1000.0
+	defaultTrebleCutoff         = 2000.0
 	defaultDelayBetweenSamples  = 100 * time.Microsecond
 	defaultDelayBetweenProcess  = 10 * time.Millisecond
 )
@@ -85,7 +87,8 @@ func (h *AudioHandler) handleAudioStart(w http.ResponseWriter, r *http.Request) 
 		defaultSamplingRate,
 		defaultTargetInputRate,
 		defaultBassCutoff,
-		defaultMidCutoff,
+		defaultMidHighCutoff,
+		defaultTrebleCutoff,
 		defaultDelayBetweenSamples,
 		defaultDelayBetweenProcess,
 		h.audioProvider,

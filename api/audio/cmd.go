@@ -20,7 +20,8 @@ type soundTesterConfig struct {
 	samplingRate           int
 	targetInputRate        float64
 	baseCutoff             float64
-	midCutoff              float64
+	midHighCutoff          float64
+	trebleCutoff           float64
 	delayBetweenSamples    time.Duration
 	delayBetweenProcessing time.Duration
 	outputFile             string
@@ -43,8 +44,9 @@ func MakeSoundTesterCmd() *cobra.Command {
 	soundTester.Flags().IntVarP(&cfg.bufferSize, "buffer-size", "p", 1024, "buffer size in bytes")
 	soundTester.Flags().IntVarP(&cfg.samplingRate, "sampling-rate", "s", 48000, "sampling rate")
 	soundTester.Flags().Float64Var(&cfg.targetInputRate, "target-input-rate", 200000.0, "expected un-decimated sampling rate")
-	soundTester.Flags().Float64Var(&cfg.baseCutoff, "base-cutoff", 120.0, "base cutoff")
-	soundTester.Flags().Float64Var(&cfg.midCutoff, "mid-cutoff", 2000.0, "mid cutoff")
+	soundTester.Flags().Float64Var(&cfg.baseCutoff, "base-cutoff", 150.0, "bass cutoff frequency (Hz)")
+	soundTester.Flags().Float64Var(&cfg.midHighCutoff, "mid-high-cutoff", 1000.0, "mid-high cutoff frequency (Hz)")
+	soundTester.Flags().Float64Var(&cfg.trebleCutoff, "treble-cutoff", 2000.0, "treble cutoff frequency (Hz)")
 	soundTester.Flags().DurationVar(&cfg.delayBetweenProcessing, "delay-between-processing", time.Millisecond*1, "delay between processing processing")
 	soundTester.Flags().DurationVar(&cfg.delayBetweenSamples, "delay-between-samples", time.Millisecond*1, "delay between samples processing")
 	soundTester.Flags().StringVarP(&cfg.outputFile, "output-file", "o", "sound-test-result.csv", "output file to write the results to")
@@ -75,7 +77,8 @@ func doSoundTester(cmd *cobra.Command, args []string) error {
 		cfg.samplingRate,
 		cfg.targetInputRate,
 		cfg.baseCutoff,
-		cfg.midCutoff,
+		cfg.midHighCutoff,
+		cfg.trebleCutoff,
 		cfg.delayBetweenSamples,
 		cfg.delayBetweenProcessing,
 		nil, // No AudioProvider for CLI command
@@ -134,7 +137,8 @@ func exportResults(ctx context.Context, resultChannel chan processing.Result, lo
 				fmt.Sprintf("%v", totalDuration.Milliseconds()),
 				fmt.Sprintf("%v", result.SignalStrength),
 				fmt.Sprintf("%v", result.Profile.Bass),
-				fmt.Sprintf("%v", result.Profile.Mid),
+				fmt.Sprintf("%v", result.Profile.MidLow),
+				fmt.Sprintf("%v", result.Profile.MidHigh),
 				fmt.Sprintf("%v", result.Profile.Treble),
 			}
 			totalDuration += result.SamplingDuration
@@ -325,7 +329,8 @@ func writeHeader(f *os.File) {
 		"Timestamp (ms)",
 		"Signal Strength",
 		"Bass",
-		"Mid",
+		"Mid-Low",
+		"Mid-High",
 		"Treble",
 	}
 

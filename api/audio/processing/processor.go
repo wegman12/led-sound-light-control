@@ -19,7 +19,8 @@ type Processor struct {
 func NewProcessor(
 	delayBetweenProcessing time.Duration,
 	bassCutoff float64,
-	midCutoff float64,
+	midHighCutoff float64,
+	trebleCutoff float64,
 	logger *zap.Logger,
 ) (*Processor, error) {
 	if delayBetweenProcessing == 0 {
@@ -31,7 +32,7 @@ func NewProcessor(
 	return &Processor{
 		delayBetweenProcessing: delayBetweenProcessing,
 		logger:                 logger,
-		profiler:               newProfiler(bassCutoff, midCutoff),
+		profiler:               newProfiler(bassCutoff, midHighCutoff, trebleCutoff),
 		transformer:            newTransformer(),
 	}, nil
 }
@@ -44,7 +45,7 @@ func (p *Processor) ensureDefaults() {
 		p.logger = zap.NewNop()
 	}
 	if p.profiler == nil {
-		p.profiler = newProfiler(0, 0)
+		p.profiler = newProfiler(0, 0, 0)
 	}
 	if p.transformer == nil {
 		p.transformer = newTransformer()

@@ -5,30 +5,36 @@ import (
 )
 
 const (
-	defaultBassCutoff = 150
-	defaultMidCutoff  = 2000
+	defaultBassCutoff    = 150
+	defaultMidHighCutoff = 1000
+	defaultTrebleCutoff  = 2000
 )
 
 type profiler struct {
-	bassCutoff float64
-	midCutoff  float64
+	bassCutoff    float64
+	midHighCutoff float64
+	trebleCutoff  float64
 }
 
-func newProfiler(bassCutoff, midCutoff float64) *profiler {
+func newProfiler(bassCutoff, midHighCutoff, trebleCutoff float64) *profiler {
 
 	if bassCutoff <= 0 {
 		bassCutoff = defaultBassCutoff
 	}
-	if midCutoff <= 0 {
-		midCutoff = defaultMidCutoff
+	if midHighCutoff <= 0 {
+		midHighCutoff = defaultMidHighCutoff
+	}
+	if trebleCutoff <= 0 {
+		trebleCutoff = defaultTrebleCutoff
 	}
 	return &profiler{
-		bassCutoff: bassCutoff,
-		midCutoff:  midCutoff,
+		bassCutoff:    bassCutoff,
+		midHighCutoff: midHighCutoff,
+		trebleCutoff:  trebleCutoff,
 	}
 }
 
-func pinIndexes(maxLength int, bassUpperIndex, midUpperIndex *int) {
+func pinIndexes(maxLength int, bassUpperIndex, midHighUpperIndex, trebleUpperIndex *int) {
 
 	if *bassUpperIndex < 0 {
 		*bassUpperIndex = 0
@@ -36,22 +42,30 @@ func pinIndexes(maxLength int, bassUpperIndex, midUpperIndex *int) {
 	if *bassUpperIndex >= maxLength {
 		*bassUpperIndex = maxLength - 1
 	}
-	if *midUpperIndex < 0 {
-		*midUpperIndex = 0
+	if *midHighUpperIndex < 0 {
+		*midHighUpperIndex = 0
 	}
-	if *midUpperIndex >= maxLength {
-		*midUpperIndex = maxLength - 1
+	if *midHighUpperIndex >= maxLength {
+		*midHighUpperIndex = maxLength - 1
+	}
+	if *trebleUpperIndex < 0 {
+		*trebleUpperIndex = 0
+	}
+	if *trebleUpperIndex >= maxLength {
+		*trebleUpperIndex = maxLength - 1
 	}
 }
 
 func (p *profiler) GetProfile(binSize float64, frequencies []float64) Profile {
 	bassUpperIndex := int(p.bassCutoff / binSize)
-	midUpperIndex := int(p.midCutoff / binSize)
-	pinIndexes(len(frequencies), &bassUpperIndex, &midUpperIndex)
+	midHighUpperIndex := int(p.midHighCutoff / binSize)
+	trebleUpperIndex := int(p.trebleCutoff / binSize)
+	pinIndexes(len(frequencies), &bassUpperIndex, &midHighUpperIndex, &trebleUpperIndex)
 
 	return Profile{
-		Bass:   utilities.Sum(frequencies[0:bassUpperIndex]),
-		Mid:    utilities.Sum(frequencies[bassUpperIndex:midUpperIndex]),
-		Treble: utilities.Sum(frequencies[midUpperIndex:]),
+		Bass:    utilities.Sum(frequencies[0:bassUpperIndex]),
+		MidLow:  utilities.Sum(frequencies[bassUpperIndex:midHighUpperIndex]),
+		MidHigh: utilities.Sum(frequencies[midHighUpperIndex:trebleUpperIndex]),
+		Treble:  utilities.Sum(frequencies[trebleUpperIndex:]),
 	}
 }
