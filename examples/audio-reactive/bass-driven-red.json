@@ -1,0 +1,17 @@
+{
+  "behaviors": [
+    {
+      "color": "red",
+      "behavior_type": "audio_modulator",
+      "config": {
+        "frequency_band": "bass",
+        "min_power_value": 0.1,
+        "max_power_value": 1.0,
+        "scaling_factor": 0.000001,
+        "noise_threshold": 92565436,
+        "smoothing": 0.3,
+        "fallback_power": 0.0
+      }
+    }
+  ]
+}
