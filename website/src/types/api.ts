@@ -92,3 +92,21 @@ export interface AudioConfigResponse {
   mid_high: AudioBandConfig;
   treble: AudioBandConfig;
 }
+
+export interface SimulationResult {
+  timestamp: number;
+  red: number;
+  green: number;
+  blue: number;
+  white: number;
+}
+
+export interface SimulationRequest {
+  audio_csv_content: string;
+  behavior_config: ManagerConfig;
+}
+
+export interface SimulationResponse {
+  results: SimulationResult[];
+  message?: string;
+}

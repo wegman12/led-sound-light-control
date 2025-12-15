@@ -25,7 +25,10 @@ func RegisterRoutes(mux *http.ServeMux, ctx context.Context, wg *sync.WaitGroup,
 	mux.HandleFunc("GET /api/lights/audio/status", audioHandler.handleAudioStatus)
 	mux.HandleFunc("GET /api/lights/audio/config", audioHandler.handleAudioConfig)
 
-	logger.Info("Light routes registered (including audio control)")
+	// Register simulation endpoint
+	mux.HandleFunc("POST /api/lights/simulate", h.handleSimulate)
+
+	logger.Info("Light routes registered (including audio control and simulation)")
 
 	return controller
 }

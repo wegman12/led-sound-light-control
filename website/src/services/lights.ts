@@ -1,5 +1,5 @@
 import { get, post } from './api-client';
-import type { AudioConfigResponse, AudioStatusResponse, ManagerConfig } from '../types/api';
+import type { AudioConfigResponse, AudioStatusResponse, ManagerConfig, SimulationRequest, SimulationResponse } from '../types/api';
 
 export async function registerBehavior(config: ManagerConfig): Promise<void> {
   return post<void>('/api/lights/behavior/register', config);
@@ -27,4 +27,8 @@ export async function getAudioStatus(): Promise<AudioStatusResponse> {
 
 export async function getAudioConfig(): Promise<AudioConfigResponse> {
   return get<AudioConfigResponse>('/api/lights/audio/config');
+}
+
+export async function simulateLEDs(request: SimulationRequest): Promise<SimulationResponse> {
+  return post<SimulationResponse>('/api/lights/simulate', request);
 }
