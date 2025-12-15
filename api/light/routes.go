@@ -18,7 +18,14 @@ func RegisterRoutes(mux *http.ServeMux, ctx context.Context, wg *sync.WaitGroup,
 	mux.HandleFunc("POST /api/lights/on", h.handleTurnOn)
 	mux.HandleFunc("POST /api/lights/off", h.handleTurnOff)
 
-	logger.Info("Light routes registered")
+	// Register audio control endpoints
+	audioHandler := newAudioHandler(ctx, audioProvider, logger)
+	mux.HandleFunc("POST /api/lights/audio/start", audioHandler.handleAudioStart)
+	mux.HandleFunc("POST /api/lights/audio/stop", audioHandler.handleAudioStop)
+	mux.HandleFunc("GET /api/lights/audio/status", audioHandler.handleAudioStatus)
+	mux.HandleFunc("GET /api/lights/audio/config", audioHandler.handleAudioConfig)
+
+	logger.Info("Light routes registered (including audio control)")
 
 	return controller
 }
