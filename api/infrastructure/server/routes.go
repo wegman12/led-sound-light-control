@@ -7,6 +7,7 @@ import (
 
 	"github.com/wegman12/led-sound-light-control/health"
 	"github.com/wegman12/led-sound-light-control/light"
+	"github.com/wegman12/led-sound-light-control/light/behavior"
 	"github.com/wegman12/led-sound-light-control/remote"
 	"go.uber.org/zap"
 )
@@ -20,8 +21,12 @@ func RegisterRoutes(mux *http.ServeMux, ctx context.Context, wg *sync.WaitGroup,
 
 	health.RegisterRoutes(mux)
 
-	// Create and register light controller
-	lightController := light.RegisterRoutes(mux, ctx, wg, logger)
+	// Create shared AudioProvider for audio-reactive lighting
+	audioProvider := behavior.NewAudioProvider()
+	logger.Debug("Created AudioProvider for audio-reactive lighting")
+
+	// Create and register light controller (with audio support)
+	lightController := light.RegisterRoutes(mux, ctx, wg, audioProvider, logger)
 
 	// Create and start remote controller (PRU-based)
 	remoteController, err := remote.NewController(ctx, defaultRemoteGPIOPin, lightController, wg, logger)

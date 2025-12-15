@@ -78,6 +78,7 @@ func doSoundTester(cmd *cobra.Command, args []string) error {
 		cfg.midCutoff,
 		cfg.delayBetweenSamples,
 		cfg.delayBetweenProcessing,
+		nil, // No AudioProvider for CLI command
 		logger,
 	)
 

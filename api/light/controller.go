@@ -58,20 +58,22 @@ func (e TogglePauseEvent) Type() EventType {
 }
 
 type Controller struct {
-	ctx          context.Context
-	manager      *Manager
-	eventChannel chan LightEvent
-	wg           *sync.WaitGroup
-	isRunning    bool
-	logger       *zap.Logger
+	ctx           context.Context
+	manager       *Manager
+	eventChannel  chan LightEvent
+	wg            *sync.WaitGroup
+	isRunning     bool
+	audioProvider behavior.AudioProvider
+	logger        *zap.Logger
 }
 
-func NewController(ctx context.Context, wg *sync.WaitGroup, logger *zap.Logger) *Controller {
+func NewController(ctx context.Context, wg *sync.WaitGroup, audioProvider behavior.AudioProvider, logger *zap.Logger) *Controller {
 	c := &Controller{
-		ctx:          ctx,
-		eventChannel: make(chan LightEvent, 100),
-		wg:           wg,
-		logger:       logger,
+		ctx:           ctx,
+		eventChannel:  make(chan LightEvent, 100),
+		wg:            wg,
+		audioProvider: audioProvider,
+		logger:        logger,
 	}
 
 	logger.Debug("Light controller initialized")
@@ -138,8 +140,7 @@ func (c *Controller) handleEvent(event LightEvent) error {
 			c.logger.Info("No behavior configured, creating default red behavior")
 			defaultConfig := createDefaultConfig()
 			var err error
-			// TODO: Phase 3 - Pass actual AudioProvider instead of nil
-		c.manager, err = NewManager(defaultConfig, nil)
+			c.manager, err = NewManager(defaultConfig, c.audioProvider)
 			if err != nil {
 				c.logger.Error("Failed to create default manager", zap.Error(err))
 				return err
@@ -159,8 +160,7 @@ func (c *Controller) handleEvent(event LightEvent) error {
 		if c.manager == nil {
 			c.logger.Debug("Creating new light manager")
 			var err error
-			// TODO: Phase 3 - Pass actual AudioProvider instead of nil
-			c.manager, err = NewManager(e.Config, nil)
+			c.manager, err = NewManager(e.Config, c.audioProvider)
 			if err != nil {
 				c.logger.Error("Failed to create light manager", zap.Error(err))
 				return err
@@ -168,8 +168,7 @@ func (c *Controller) handleEvent(event LightEvent) error {
 			c.logger.Info("Light manager created successfully")
 		} else {
 			c.logger.Debug("Updating existing light manager behaviors")
-			// TODO: Phase 3 - Pass actual AudioProvider instead of nil
-			if err := c.manager.UpdateBehaviors(e.Config, nil); err != nil {
+			if err := c.manager.UpdateBehaviors(e.Config, c.audioProvider); err != nil {
 				c.logger.Error("Failed to update light behaviors", zap.Error(err))
 				return err
 			}
@@ -190,8 +189,7 @@ func (c *Controller) handleEvent(event LightEvent) error {
 			c.logger.Info("No behavior configured, creating default red behavior and turning on")
 			defaultConfig := createDefaultConfig()
 			var err error
-			// TODO: Phase 3 - Pass actual AudioProvider instead of nil
-		c.manager, err = NewManager(defaultConfig, nil)
+			c.manager, err = NewManager(defaultConfig, c.audioProvider)
 			if err != nil {
 				c.logger.Error("Failed to create default manager", zap.Error(err))
 				return err

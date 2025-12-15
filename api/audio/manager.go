@@ -7,17 +7,19 @@ import (
 
 	"github.com/wegman12/led-sound-light-control/audio/processing"
 	"github.com/wegman12/led-sound-light-control/audio/sampling"
+	"github.com/wegman12/led-sound-light-control/light/behavior"
 	"go.uber.org/zap"
 )
 
 type Manager struct {
-	sampler   *sampling.Sampler
-	processor *processing.Processor
-	cancel    context.CancelFunc
-	logger    *zap.Logger
+	sampler       *sampling.Sampler
+	processor     *processing.Processor
+	audioProvider behavior.AudioProvider
+	cancel        context.CancelFunc
+	logger        *zap.Logger
 }
 
-func NewManager(bufferSize, samplingRate int, targetInputRate, bassCutoff, midCutoff float64, delayBetweenSamples, delayBetweenProcessing time.Duration, logger *zap.Logger) (*Manager, error) {
+func NewManager(bufferSize, samplingRate int, targetInputRate, bassCutoff, midCutoff float64, delayBetweenSamples, delayBetweenProcessing time.Duration, audioProvider behavior.AudioProvider, logger *zap.Logger) (*Manager, error) {
 	sampler, err := sampling.NewSampler(bufferSize, samplingRate, targetInputRate, delayBetweenSamples, logger)
 	if err != nil {
 		return nil, err
@@ -27,9 +29,10 @@ func NewManager(bufferSize, samplingRate int, targetInputRate, bassCutoff, midCu
 		return nil, err
 	}
 	return &Manager{
-		sampler:   sampler,
-		processor: processor,
-		logger:    logger,
+		sampler:       sampler,
+		processor:     processor,
+		audioProvider: audioProvider,
+		logger:        logger,
 	}, nil
 }
 
@@ -73,5 +76,53 @@ func (m *Manager) Stop() {
 		m.logger.Debug("manager stopped - cancelling context")
 		m.cancel()
 		m.cancel = nil
+	}
+}
+
+// StreamToLights streams audio processing results to the LED system via AudioProvider
+// This method starts audio sampling and processing, then forwards results to the AudioProvider
+func (m *Manager) StreamToLights(ctx context.Context) {
+	if m.audioProvider == nil {
+		m.logger.Warn("StreamToLights called but no AudioProvider configured")
+		return
+	}
+
+	m.logger.Info("Starting audio stream to lights")
+
+	// Create results channel for audio processing
+	resultsChannel := make(chan processing.Result, 100)
+
+	// Start audio processing in background
+	go m.Start(resultsChannel, ctx)
+
+	// Stream results to AudioProvider
+	for {
+		select {
+		case <-ctx.Done():
+			m.logger.Info("Audio streaming to lights stopped")
+			return
+		case result := <-resultsChannel:
+			// Convert processing.Profile to behavior.AudioProfile
+			// Note: Current Profile has Bass, Mid, Treble
+			// Phase 5 will split Mid into MidLow and MidHigh
+			// For now, we split Mid evenly between MidLow and MidHigh
+			profile := behavior.AudioProfile{
+				Bass:      result.Profile.Bass,
+				MidLow:    result.Profile.Mid * 0.5,
+				MidHigh:   result.Profile.Mid * 0.5,
+				Treble:    result.Profile.Treble,
+				Timestamp: time.Now(),
+			}
+
+			// Update the audio provider with the new profile
+			m.audioProvider.UpdateProfile(profile)
+
+			m.logger.Debug("Updated audio profile",
+				zap.Float64("bass", profile.Bass),
+				zap.Float64("mid_low", profile.MidLow),
+				zap.Float64("mid_high", profile.MidHigh),
+				zap.Float64("treble", profile.Treble),
+			)
+		}
 	}
 }
