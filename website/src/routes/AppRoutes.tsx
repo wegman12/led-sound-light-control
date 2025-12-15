@@ -6,6 +6,7 @@ import SpecificColorsPage from '../pages/SpecificColorsPage';
 import FlashPage from '../pages/FlashPage';
 import FadePage from '../pages/FadePage';
 import ShimmerPage from '../pages/ShimmerPage';
+import AudioLightsPage from '../pages/AudioLightsPage';
 
 export function AppRoutes() {
   return (
@@ -17,6 +18,7 @@ export function AppRoutes() {
           <Route path="/flash" element={<FlashPage />} />
           <Route path="/fade" element={<FadePage />} />
           <Route path="/shimmer" element={<ShimmerPage />} />
+          <Route path="/audio-lights" element={<AudioLightsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

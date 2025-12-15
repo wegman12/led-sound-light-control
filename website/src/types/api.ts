@@ -1,6 +1,8 @@
 export type Color = 'red' | 'green' | 'blue' | 'white';
 
-export type BehaviorType = 'breathing' | 'flashing' | 'fixed' | 'skipper' | 'joiner';
+export type BehaviorType = 'breathing' | 'flashing' | 'fixed' | 'skipper' | 'joiner' | 'audio_modulator';
+
+export type FrequencyBand = 'bass' | 'mid-low' | 'mid-high' | 'treble';
 
 export interface FixedConfig {
   power_value: number;
@@ -34,12 +36,23 @@ export interface JoinerConfig {
   behaviors: JoinedBehaviorItem[];
 }
 
+export interface AudioModulatorConfig {
+  frequency_band: FrequencyBand;
+  min_power_value: number;
+  max_power_value: number;
+  scaling_factor: number;
+  noise_threshold: number;
+  smoothing: number;
+  fallback_power: number | null;
+}
+
 export type BehaviorConfigData =
   | FixedConfig
   | BreathingConfig
   | FlashingConfig
   | SkipperConfig
-  | JoinerConfig;
+  | JoinerConfig
+  | AudioModulatorConfig;
 
 export interface BehaviorConfig {
   behavior_type: BehaviorType;
@@ -53,4 +66,29 @@ export interface ManagerConfig {
 
 export interface HealthResponse {
   status: string;
+}
+
+export interface AudioProfile {
+  bass: number;
+  mid_low: number;
+  mid_high: number;
+  treble: number;
+}
+
+export interface AudioStatusResponse {
+  is_streaming: boolean;
+  profile?: AudioProfile;
+  message?: string;
+}
+
+export interface AudioBandConfig {
+  scaling_factor: number;
+  noise_threshold: number;
+}
+
+export interface AudioConfigResponse {
+  bass: AudioBandConfig;
+  mid_low: AudioBandConfig;
+  mid_high: AudioBandConfig;
+  treble: AudioBandConfig;
 }

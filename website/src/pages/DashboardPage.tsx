@@ -4,6 +4,7 @@ import GridViewIcon from '@mui/icons-material/GridView';
 import BoltIcon from '@mui/icons-material/Bolt';
 import GradientIcon from '@mui/icons-material/Gradient';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import MusicNoteIcon from '@mui/icons-material/MusicNote';
 import BehaviorCard from '../components/BehaviorCard';
 
 export default function DashboardPage() {
@@ -58,6 +59,12 @@ export default function DashboardPage() {
             description="Breathing effect with custom colors"
             icon={<AutoAwesomeIcon sx={{ fontSize: 'inherit' }} />}
             path="/shimmer"
+          />
+          <BehaviorCard
+            title="Audio Lights"
+            description="Audio-reactive lighting synchronized to music"
+            icon={<MusicNoteIcon sx={{ fontSize: 'inherit' }} />}
+            path="/audio-lights"
           />
         </Box>
       </Box>
