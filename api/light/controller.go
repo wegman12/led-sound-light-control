@@ -138,7 +138,8 @@ func (c *Controller) handleEvent(event LightEvent) error {
 			c.logger.Info("No behavior configured, creating default red behavior")
 			defaultConfig := createDefaultConfig()
 			var err error
-			c.manager, err = NewManager(defaultConfig)
+			// TODO: Phase 3 - Pass actual AudioProvider instead of nil
+		c.manager, err = NewManager(defaultConfig, nil)
 			if err != nil {
 				c.logger.Error("Failed to create default manager", zap.Error(err))
 				return err
@@ -158,7 +159,8 @@ func (c *Controller) handleEvent(event LightEvent) error {
 		if c.manager == nil {
 			c.logger.Debug("Creating new light manager")
 			var err error
-			c.manager, err = NewManager(e.Config)
+			// TODO: Phase 3 - Pass actual AudioProvider instead of nil
+			c.manager, err = NewManager(e.Config, nil)
 			if err != nil {
 				c.logger.Error("Failed to create light manager", zap.Error(err))
 				return err
@@ -166,7 +168,8 @@ func (c *Controller) handleEvent(event LightEvent) error {
 			c.logger.Info("Light manager created successfully")
 		} else {
 			c.logger.Debug("Updating existing light manager behaviors")
-			if err := c.manager.UpdateBehaviors(e.Config); err != nil {
+			// TODO: Phase 3 - Pass actual AudioProvider instead of nil
+			if err := c.manager.UpdateBehaviors(e.Config, nil); err != nil {
 				c.logger.Error("Failed to update light behaviors", zap.Error(err))
 				return err
 			}
@@ -187,7 +190,8 @@ func (c *Controller) handleEvent(event LightEvent) error {
 			c.logger.Info("No behavior configured, creating default red behavior and turning on")
 			defaultConfig := createDefaultConfig()
 			var err error
-			c.manager, err = NewManager(defaultConfig)
+			// TODO: Phase 3 - Pass actual AudioProvider instead of nil
+		c.manager, err = NewManager(defaultConfig, nil)
 			if err != nil {
 				c.logger.Error("Failed to create default manager", zap.Error(err))
 				return err
@@ -233,7 +237,7 @@ func createDefaultConfig() ManagerConfig {
 // Panics if creation fails, which should never happen with valid power values
 func mustCreateFixedBehavior(power float64) behavior.Behavior {
 	configJSON := json.RawMessage([]byte(`{"power_value": ` + floatToString(power) + `}`))
-	fixedBehavior, err := behavior.CreateBehavior(behavior.FixedBehaviorType, configJSON)
+	fixedBehavior, err := behavior.CreateBehavior(behavior.FixedBehaviorType, configJSON, nil)
 	if err != nil {
 		panic("failed to create fixed behavior: " + err.Error())
 	}

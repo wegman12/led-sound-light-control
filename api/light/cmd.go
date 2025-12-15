@@ -48,7 +48,8 @@ func MakeLedTesterCmd() *cobra.Command {
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
 			defer stop() // Ensure the signal handling is stopped on exit
 
-			mgr, err := NewManager(managerConfig)
+			// TODO: Phase 3 - Pass actual AudioProvider instead of nil
+			mgr, err := NewManager(managerConfig, nil)
 			if mgr != nil {
 				defer mgr.Close()
 			}

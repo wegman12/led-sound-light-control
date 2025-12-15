@@ -12,8 +12,10 @@ type ManagerConfig struct {
 }
 
 type BehaviorConfig struct {
-	Color    led.Color         `json:"color"`
-	Behavior behavior.Behavior `json:"config"`
+	Color        led.Color         `json:"color"`
+	BehaviorType behavior.Type     `json:"-"` // Not serialized, populated during unmarshal
+	RawConfig    json.RawMessage   `json:"config"`
+	Behavior     behavior.Behavior `json:"-"` // Created later with AudioProvider
 }
 
 func (m *BehaviorConfig) UnmarshalJSON(data []byte) error {
@@ -21,21 +23,25 @@ func (m *BehaviorConfig) UnmarshalJSON(data []byte) error {
 	var temp struct {
 		BehaviorType string          `json:"behavior_type"`
 		Color        string          `json:"color"`
-		Behavior     json.RawMessage `json:"config"`
+		Config       json.RawMessage `json:"config"`
 	}
 	if err := json.Unmarshal(data, &temp); err != nil {
 		return err
 	}
 
 	m.Color = led.LookupColor(temp.Color)
+	m.BehaviorType = behavior.LookupBehavior(temp.BehaviorType)
+	m.RawConfig = temp.Config
 
-	bt := behavior.LookupBehavior(temp.BehaviorType)
+	return nil
+}
 
-	b, err := behavior.CreateBehavior(bt, temp.Behavior)
+// CreateBehavior creates the behavior instance with the given AudioProvider
+func (m *BehaviorConfig) CreateBehavior(audioProvider behavior.AudioProvider) error {
+	b, err := behavior.CreateBehavior(m.BehaviorType, m.RawConfig, audioProvider)
 	if err != nil {
 		return err
 	}
 	m.Behavior = b
-
 	return nil
 }

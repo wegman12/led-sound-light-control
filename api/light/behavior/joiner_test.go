@@ -113,6 +113,13 @@ func TestBehavesAsExpected(t *testing.T) {
 		t.Fatal("expected 3 behaviors")
 	}
 
+	// Create behaviors from config (passing nil for AudioProvider)
+	for i := range cfg.Behaviors {
+		if err := cfg.Behaviors[i].CreateBehavior(nil); err != nil {
+			t.Fatalf("Failed to create behavior: %v", err)
+		}
+	}
+
 	rp := cfg.Behaviors[0].Behavior.GetPower(500 * time.Millisecond)
 	if rp == nil || *rp != 1.0 {
 		t.Fatal("expected 1.0")

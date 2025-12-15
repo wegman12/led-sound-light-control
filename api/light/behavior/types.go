@@ -15,6 +15,7 @@ const (
 	FixedBehaviorType
 	SkipperBehaviorType
 	JoinerBehaviorType
+	AudioModulatorBehaviorType
 )
 
 func LookupBehavior(behaviorName string) Type {
@@ -29,6 +30,8 @@ func LookupBehavior(behaviorName string) Type {
 		return SkipperBehaviorType
 	case "joiner":
 		return JoinerBehaviorType
+	case "audio_modulator", "audio":
+		return AudioModulatorBehaviorType
 	default:
 		return BreathingBehaviorType
 	}
@@ -43,7 +46,9 @@ type Behavior interface {
 	Weight() float64
 }
 
-func CreateBehavior(t Type, cfg json.RawMessage) (Behavior, error) {
+// CreateBehavior creates a behavior instance from type and config
+// audioProvider can be nil for non-audio behaviors
+func CreateBehavior(t Type, cfg json.RawMessage, audioProvider AudioProvider) (Behavior, error) {
 	switch t {
 	case BreathingBehaviorType:
 		return newBreather(cfg)
@@ -55,6 +60,11 @@ func CreateBehavior(t Type, cfg json.RawMessage) (Behavior, error) {
 		return newSkipper(cfg)
 	case JoinerBehaviorType:
 		return newJoiner(cfg)
+	case AudioModulatorBehaviorType:
+		if audioProvider == nil {
+			return nil, fmt.Errorf("audio_modulator behavior requires AudioProvider")
+		}
+		return newAudioModulator(cfg, audioProvider)
 	default:
 		return nil, fmt.Errorf("unknown ActiveBehavior type %d", t)
 	}

@@ -25,7 +25,7 @@ const (
 	defaultNextCycleDelay = 800 * time.Microsecond
 )
 
-func NewManager(cfg ManagerConfig) (*Manager, error) {
+func NewManager(cfg ManagerConfig, audioProvider behavior.AudioProvider) (*Manager, error) {
 
 	err := bbhw.LoadOverlayForSysfsPWM()
 	if err != nil {
@@ -38,15 +38,15 @@ func NewManager(cfg ManagerConfig) (*Manager, error) {
 			leds: leds,
 		}, err
 	}
-	behaviors, err := createBehaviors(cfg.Behaviors)
+	behaviors, err := createBehaviors(cfg.Behaviors, audioProvider)
 	return &Manager{
 		leds:            leds,
 		behaviorManager: behavior.CreateManager(behaviors),
 	}, err
 }
 
-func (m *Manager) UpdateBehaviors(cfg ManagerConfig) error {
-	behaviors, err := createBehaviors(cfg.Behaviors)
+func (m *Manager) UpdateBehaviors(cfg ManagerConfig, audioProvider behavior.AudioProvider) error {
+	behaviors, err := createBehaviors(cfg.Behaviors, audioProvider)
 	if err != nil {
 		return err
 	}
@@ -120,9 +120,19 @@ func createLeds() (map[led.Color]led.Led, error) {
 	return leds, nil
 }
 
-func createBehaviors(cfgs []BehaviorConfig) (map[led.Color][]behavior.Behavior, error) {
+func createBehaviors(cfgs []BehaviorConfig, audioProvider behavior.AudioProvider) (map[led.Color][]behavior.Behavior, error) {
 	// Normalize config to ensure all LED colors are represented
 	normalizedCfgs := normalizeConfig(cfgs)
+
+	// Create behaviors from configs
+	for i := range normalizedCfgs {
+		if normalizedCfgs[i].Behavior == nil {
+			err := normalizedCfgs[i].CreateBehavior(audioProvider)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	behaviors := make(map[led.Color][]behavior.Behavior)
 
@@ -151,17 +161,13 @@ func normalizeConfig(cfgs []BehaviorConfig) []BehaviorConfig {
 	// Add zero-power behaviors for missing colors
 	for _, color := range allColors {
 		if !existingColors[color] {
-			// Create a fixed behavior with 0 power using the factory
+			// Store config for a fixed behavior with 0 power
+			// Behavior will be created later in createBehaviors
 			configJSON := json.RawMessage(`{"power_value": 0.0}`)
-			zeroBehavior, err := behavior.CreateBehavior(behavior.FixedBehaviorType, configJSON)
-			if err != nil {
-				// If we can't create the zero behavior, skip this color
-				// This shouldn't happen but we handle it gracefully
-				continue
-			}
 			normalized = append(normalized, BehaviorConfig{
-				Color:    color,
-				Behavior: zeroBehavior,
+				Color:        color,
+				BehaviorType: behavior.FixedBehaviorType,
+				RawConfig:    configJSON,
 			})
 		}
 	}

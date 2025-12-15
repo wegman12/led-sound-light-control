@@ -27,7 +27,9 @@ func (m *JoinedBehavior) UnmarshalJSON(data []byte) error {
 
 	bt := LookupBehavior(temp.BehaviorType)
 
-	b, err := CreateBehavior(bt, temp.ActiveBehavior)
+	// Note: Joiner does not support audio behaviors nested within it (pass nil)
+	// Audio behaviors require AudioProvider which isn't available during unmarshal
+	b, err := CreateBehavior(bt, temp.ActiveBehavior, nil)
 	if err != nil {
 		return err
 	}

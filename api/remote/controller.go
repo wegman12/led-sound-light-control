@@ -216,7 +216,7 @@ func createMixedColorConfig(colorMix map[led.Color]float64) light.ManagerConfig 
 		configJSON := json.RawMessage([]byte(`{"power_value": ` + floatToString(power) + `}`))
 
 		// Create the behavior using the factory
-		fixedBehavior, err := behavior.CreateBehavior(behavior.FixedBehaviorType, configJSON)
+		fixedBehavior, err := behavior.CreateBehavior(behavior.FixedBehaviorType, configJSON, nil)
 		if err != nil {
 			// Log error but continue with other colors
 			continue
