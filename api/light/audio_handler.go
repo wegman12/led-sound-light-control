@@ -16,7 +16,7 @@ import (
 type AudioHandler struct {
 	ctx           context.Context
 	audioProvider behavior.AudioProvider
-	audioManager  *audio.Manager
+	pruManager    *audio.PRUManager
 	cancelAudio   context.CancelFunc
 	mu            sync.Mutex
 	isStreaming   bool
@@ -52,17 +52,10 @@ type AudioScalingConfig struct {
 	Treble  AudioBandConfig `json:"treble"`
 }
 
-// Default audio configuration (from analysis in analysis/audio/)
-// Frequency bands match PRU configuration: Bass (0-150Hz), MidLow (150-1000Hz), MidHigh (1000-2000Hz), Treble (2000Hz+)
+// Default audio configuration for PRU audio streaming
+// PRU samples at ~40 Hz, we read at 25ms intervals (40 Hz)
 const (
-	defaultBufferSize           = 2048
-	defaultSamplingRate         = 16000
-	defaultTargetInputRate      = 8000.0
-	defaultBassCutoff           = 150.0
-	defaultMidHighCutoff        = 1000.0
-	defaultTrebleCutoff         = 2000.0
-	defaultDelayBetweenSamples  = 100 * time.Microsecond
-	defaultDelayBetweenProcess  = 10 * time.Millisecond
+	defaultPRUUpdateRate = 25 * time.Millisecond // Read PRU audio data at 40 Hz
 )
 
 // handleAudioStart starts audio streaming to lights
@@ -79,45 +72,73 @@ func (h *AudioHandler) handleAudioStart(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	h.logger.Info("Starting audio stream to lights")
+	h.logger.Info("Starting PRU audio stream to lights")
 
-	// Create audio manager with default configuration
-	audioManager, err := audio.NewManager(
-		defaultBufferSize,
-		defaultSamplingRate,
-		defaultTargetInputRate,
-		defaultBassCutoff,
-		defaultMidHighCutoff,
-		defaultTrebleCutoff,
-		defaultDelayBetweenSamples,
-		defaultDelayBetweenProcess,
-		h.audioProvider,
-		h.logger,
-	)
+	// Create PRU audio manager
+	pruManager, err := audio.NewPRUManager(h.logger)
 	if err != nil {
-		h.logger.Error("Failed to create audio manager", zap.Error(err))
+		h.logger.Error("Failed to create PRU audio manager", zap.Error(err))
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{
-			"error": "Failed to initialize audio system: " + err.Error(),
+			"error": "Failed to initialize PRU audio system: " + err.Error(),
 		})
 		return
 	}
 
+	h.pruManager = pruManager
+
 	// Create context for audio streaming
 	ctx, cancel := context.WithCancel(h.ctx)
 	h.cancelAudio = cancel
-	h.audioManager = audioManager
 
-	// Start audio streaming in background
+	// Create channel for PRU sound profiles
+	profileChannel := make(chan *audio.SoundProfile, 100)
+
+	// Start PRU audio manager in background
 	go func() {
-		h.logger.Info("Audio streaming goroutine started")
-		audioManager.StreamToLights(ctx)
-		h.logger.Info("Audio streaming goroutine stopped")
+		h.logger.Info("PRU audio manager goroutine started")
+		err := h.pruManager.Start(profileChannel, defaultPRUUpdateRate, ctx)
+		if err != nil {
+			h.logger.Error("PRU audio manager error", zap.Error(err))
+		}
+		h.logger.Info("PRU audio manager goroutine stopped")
+	}()
+
+	// Start goroutine to convert PRU profiles to AudioProvider profiles
+	go func() {
+		h.logger.Info("Audio profile conversion goroutine started")
+		for {
+			select {
+			case <-ctx.Done():
+				h.logger.Info("Audio profile conversion stopped")
+				return
+			case profile := <-profileChannel:
+				// Convert PRU SoundProfile to behavior AudioProfile
+				// Use the Avg values (average magnitude per bin)
+				audioProfile := behavior.AudioProfile{
+					Bass:      float64(profile.BassAvg),
+					MidLow:    float64(profile.MidLowAvg),
+					MidHigh:   float64(profile.MidHighAvg),
+					Treble:    float64(profile.TrebleAvg),
+					Timestamp: time.Now(),
+				}
+
+				// Update the audio provider
+				h.audioProvider.UpdateProfile(audioProfile)
+
+				h.logger.Debug("Updated audio profile from PRU",
+					zap.Float64("bass", audioProfile.Bass),
+					zap.Float64("mid_low", audioProfile.MidLow),
+					zap.Float64("mid_high", audioProfile.MidHigh),
+					zap.Float64("treble", audioProfile.Treble),
+				)
+			}
+		}
 	}()
 
 	h.isStreaming = true
 
-	h.logger.Info("Audio streaming started successfully")
+	h.logger.Info("PRU audio streaming started successfully")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":     "Audio streaming started",
@@ -139,7 +160,7 @@ func (h *AudioHandler) handleAudioStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Info("Stopping audio stream")
+	h.logger.Info("Stopping PRU audio stream")
 
 	// Cancel audio streaming context
 	if h.cancelAudio != nil {
@@ -147,15 +168,18 @@ func (h *AudioHandler) handleAudioStop(w http.ResponseWriter, r *http.Request) {
 		h.cancelAudio = nil
 	}
 
-	// Stop audio manager
-	if h.audioManager != nil {
-		h.audioManager.Stop()
-		h.audioManager = nil
+	// Stop and close PRU manager
+	if h.pruManager != nil {
+		h.pruManager.Stop()
+		if err := h.pruManager.Close(); err != nil {
+			h.logger.Error("Error closing PRU manager", zap.Error(err))
+		}
+		h.pruManager = nil
 	}
 
 	h.isStreaming = false
 
-	h.logger.Info("Audio streaming stopped successfully")
+	h.logger.Info("PRU audio streaming stopped successfully")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":     "Audio streaming stopped",
