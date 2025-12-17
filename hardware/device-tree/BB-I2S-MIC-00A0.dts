@@ -28,9 +28,9 @@
         __overlay__ {
             i2s_pins: pinmux_i2s_pins {
                 pinctrl-single,pins = <
-                    0x198 0x20  /* P9_30: mcasp0_axr0 (Mode 0, INPUT | PULLDOWN) */
-                    0x194 0x20  /* P9_29: mcasp0_fsx (Mode 0, INPUT | PULLDOWN) */
-                    0x190 0x20  /* P9_31: mcasp0_aclkx (Mode 0, INPUT | PULLDOWN) */
+                    0x198 0x20  /* P9_30: mcasp0_axr0 (Mode 0, INPUT | PULLDOWN) - Data from mic */
+                    0x194 0x00  /* P9_29: mcasp0_fsx (Mode 0, OUTPUT | PULLDOWN) - Frame sync clock */
+                    0x190 0x00  /* P9_31: mcasp0_aclkx (Mode 0, OUTPUT | PULLDOWN) - Bit clock */
                 >;
             };
         };
@@ -75,28 +75,23 @@
                 compatible = "simple-audio-card";
                 simple-audio-card,name = "I2S-Microphone";
                 simple-audio-card,format = "i2s";
-                simple-audio-card,bitclock-master = <&sound_master>;
-                simple-audio-card,frame-master = <&sound_master>;
+                simple-audio-card,bitclock-master = <&cpu_master>;
+                simple-audio-card,frame-master = <&cpu_master>;
 
-                simple-audio-card,widgets =
-                    "Microphone", "Mic Input";
-                simple-audio-card,routing =
-                    "Mic Input", "Microphone";
-
-                simple-audio-card,cpu {
+                cpu_master: simple-audio-card,cpu {
                     sound-dai = <&mcasp0>;
                     system-clock-frequency = <24576000>;
                 };
 
-                sound_master: simple-audio-card,codec {
+                simple-audio-card,codec {
                     sound-dai = <&codec>;
                     system-clock-frequency = <24576000>;
                 };
             };
 
-            codec: spdif_receiver {
+            codec: snd_soc_dummy_codec {
                 #sound-dai-cells = <0>;
-                compatible = "linux,spdif-dir";
+                compatible = "linux,snd-soc-dummy";
                 status = "okay";
             };
         };
