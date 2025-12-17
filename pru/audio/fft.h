@@ -85,5 +85,6 @@ extern const complex_q15_t twiddle_factors[FFT_SIZE / 2];
 void fft_init(fft_buffer_t *fft_buf, const int16_t *input_samples);
 void fft_compute(fft_buffer_t *fft_buf);
 uint32_t fft_magnitude_squared(complex_q15_t c);
+uint32_t fft_magnitude(complex_q15_t c);
 
 #endif /* FFT_H */

@@ -141,33 +141,35 @@ const int32_t hann_window_half[BUFFER_SIZE / 2] = {
     65387,65406,65423,65439,65454,65467,65480,65491,65501,65509,65517,65523,65528,65532,65534,65535
 };
 
-/* Apply DC offset removal to buffer (in-place)
- * Converts unsigned ADC samples to signed values centered at zero
+/* Apply DC offset removal using 32-bit arithmetic
+ * Converts unsigned ADC samples to signed 32-bit values centered at zero
+ * Input: uint16_t samples (0-4095 ADC range)
+ * Output: int32_t samples centered at zero
  */
-static void remove_dc_offset(sample_t *buffer, uint16_t size) {
+static void remove_dc_offset_32bit(const sample_t *input, int32_t *output, uint16_t size) {
     uint32_t sum = 0;
-    int16_t mean;
+    int32_t mean;
     uint16_t i;
-    int16_t *signed_buffer = (int16_t *)buffer;
 
     /* Calculate mean of buffer */
     for (i = 0; i < size; i++) {
-        sum += buffer[i];
+        sum += input[i];
     }
-    mean = (int16_t)(sum / size);
+    mean = (int32_t)(sum / size);
 
-    /* Convert to signed and subtract mean using proper signed arithmetic */
+    /* Convert to signed 32-bit and subtract mean (no overflow possible) */
     for (i = 0; i < size; i++) {
-        signed_buffer[i] = (int16_t)buffer[i] - mean;
+        output[i] = (int32_t)input[i] - mean;
     }
 }
 
-/* Apply Hann window to buffer samples (in-place) before FFT
+/* Apply Hann window to 32-bit buffer samples (in-place)
  * Multiplies each sample by the corresponding window coefficient
  * Window is symmetric, so we only store half and mirror it
  * Window coefficients are scaled by 65536, representing 0.0 to 1.0
+ * Works on int32_t to avoid any overflow during multiplication
  */
-static void apply_hann_window(int16_t *buffer, uint16_t size) {
+static void apply_hann_window_32bit(int32_t *buffer, uint16_t size) {
     uint16_t i;
 
     /* Apply window - using symmetric property */
@@ -183,9 +185,10 @@ static void apply_hann_window(int16_t *buffer, uint16_t size) {
 
         /* Multiply sample by window coefficient and scale back
          * Coefficients are scaled by 65536, so divide by 65536 (shift right by 16)
+         * Using 64-bit intermediate to avoid overflow during multiplication
          */
-        int32_t windowed = ((int32_t)buffer[i] * window_coef) >> 16;
-        buffer[i] = (int16_t)windowed;
+        int64_t windowed = ((int64_t)buffer[i] * (int64_t)window_coef) >> 16;
+        buffer[i] = (int32_t)windowed;
     }
 }
 
@@ -322,7 +325,7 @@ void main(void) {
         ctrl->bass_max_hz = BASS_MAX_HZ;
         ctrl->midlow_max_hz = MIDLOW_MAX_HZ;
         ctrl->midhigh_max_hz = MIDHIGH_MAX_HZ;
-        ctrl->smoothing_alpha_x1000 = 300; /* Default alpha = 0.3 (30% new, 70% old) */
+        ctrl->smoothing_alpha_x1000 = 700; /* Default alpha = 0.7 (70% new, 30% old) */
     }
 
     /* Initialize status section */
@@ -433,13 +436,38 @@ void main(void) {
                 /* Reset cycle counter to prevent overflow during timing */
                 reset_counter();
 
-                /* Pre-process: Remove DC offset from completed buffer */
-                remove_dc_offset(completed_buffer, BUFFER_SIZE);
+                /* Use FFT buffer space as temporary 32-bit working buffer
+                 * This avoids overflow issues during preprocessing
+                 * FFT buffer is 4KB = 1024 complex samples = 1024 int32_t values
+                 */
+                int32_t *temp_buffer = (int32_t *)fft_buf;
 
-                /* Pre-process: Apply Hann window to reduce spectral leakage */
-                apply_hann_window((int16_t *)completed_buffer, BUFFER_SIZE);
+                /* Pre-process Step 1: Remove DC offset using 32-bit arithmetic
+                 * Input: uint16_t samples (0-4095), Output: int32_t centered at zero
+                 */
+                remove_dc_offset_32bit(completed_buffer, temp_buffer, BUFFER_SIZE);
 
-                /* Initialize FFT with processed buffer samples */
+                /* Pre-process Step 2: Apply Hann window using 32-bit arithmetic
+                 * This reduces spectral leakage without overflow concerns
+                 */
+                apply_hann_window_32bit(temp_buffer, BUFFER_SIZE);
+
+                /* Convert preprocessed 32-bit samples to 16-bit for FFT
+                 * We can reuse the completed_buffer space since we're done with original data
+                 */
+                {
+                    uint16_t i;
+                    int16_t *output_buffer = (int16_t *)completed_buffer;
+                    for (i = 0; i < BUFFER_SIZE; i++) {
+                        /* Clamp to int16_t range to prevent overflow */
+                        int32_t val = temp_buffer[i];
+                        if (val > 32767) val = 32767;
+                        if (val < -32768) val = -32768;
+                        output_buffer[i] = (int16_t)val;
+                    }
+                }
+
+                /* Initialize FFT with preprocessed samples */
                 fft_init(fft_buf, (const int16_t *)completed_buffer);
 
                 /* Compute FFT */
@@ -453,7 +481,7 @@ void main(void) {
                 /* Calculate magnitude and accumulate into frequency bins */
                 {
                     uint16_t bin;
-                    uint32_t mag_sq;
+                    uint32_t mag;
                     uint32_t bass_sum = 0;
                     uint32_t midlow_sum = 0;
                     uint32_t midhigh_sum = 0;
@@ -471,21 +499,22 @@ void main(void) {
 
                     /* Accumulate magnitudes for each frequency band
                      * Skip bin 0 (DC component) - it represents DC offset, not audio frequency
+                     * Using magnitude (not squared) for more linear response and less noise amplification
                      */
                     for (bin = 1; bin < nyquist_bin; bin++) {
-                        mag_sq = fft_magnitude_squared(fft_buf->data[bin]);
+                        mag = fft_magnitude(fft_buf->data[bin]);
 
                         if (bin <= bass_end) {
-                            bass_sum += mag_sq;
+                            bass_sum += mag;
                             bass_count++;
                         } else if (bin <= midlow_end) {
-                            midlow_sum += mag_sq;
+                            midlow_sum += mag;
                             midlow_count++;
                         } else if (bin <= midhigh_end) {
-                            midhigh_sum += mag_sq;
+                            midhigh_sum += mag;
                             midhigh_count++;
                         } else {
-                            treble_sum += mag_sq;
+                            treble_sum += mag;
                             treble_count++;
                         }
                     }

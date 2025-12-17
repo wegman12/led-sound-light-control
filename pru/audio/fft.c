@@ -369,3 +369,33 @@ uint32_t fft_magnitude_squared(complex_q15_t c) {
     int32_t imag_sq = (int32_t)c.imag * (int32_t)c.imag;
     return (uint32_t)(real_sq + imag_sq);
 }
+
+/* Integer square root using Newton's method
+ * Returns: sqrt(n) approximation
+ */
+static uint32_t isqrt(uint32_t n) {
+    uint32_t x, y;
+
+    if (n == 0) return 0;
+
+    /* Initial guess: start with the value itself shifted right */
+    x = n;
+    y = (x + 1) >> 1;
+
+    /* Newton's method: iterate until convergence (max 5 iterations is enough) */
+    while (y < x) {
+        x = y;
+        y = (x + n / x) >> 1;
+    }
+
+    return x;
+}
+
+/* Calculate magnitude of complex number
+ * Returns: |c| = sqrt(real^2 + imag^2)
+ * More linear response to signal strength compared to magnitude squared
+ */
+uint32_t fft_magnitude(complex_q15_t c) {
+    uint32_t mag_sq = fft_magnitude_squared(c);
+    return isqrt(mag_sq);
+}
