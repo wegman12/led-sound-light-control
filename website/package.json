@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:production": "VITE_API_BASE_URL=http://bbb1.wegman:8080 npm run build",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",

@@ -1,5 +1,8 @@
 .PHONY: help install dev build test test-ui test-run lint clean deploy
 
+# Configuration
+DEPLOY_HOST ?= bbb1.wegman
+
 # Default target
 help:
 	@echo "Available commands:"
@@ -11,7 +14,7 @@ help:
 	@echo "  make test-run   - Run tests once"
 	@echo "  make lint       - Run ESLint"
 	@echo "  make clean      - Clean build artifacts"
-	@echo "  make deploy     - Build and deploy to bbb1.wegman"
+	@echo "  make deploy     - Build and deploy to \$${DEPLOY_HOST} (default: bbb1.wegman)"
 
 # Install dependencies
 install:
@@ -47,8 +50,8 @@ clean:
 
 # Build and deploy to server
 deploy:
-	@echo "Building for production with API URL: http://bbb1.wegman:8080..."
-	npm run build:production
-	@echo "Deploying to bbb1.wegman:/usr/share/nginx/html..."
-	rsync -avz --delete dist/ bbb1.wegman:/usr/share/nginx/html/
+	@echo "Building for production with API URL: http://$(DEPLOY_HOST):8080..."
+	VITE_API_BASE_URL=http://$(DEPLOY_HOST):8080 npm run build
+	@echo "Deploying to $(DEPLOY_HOST):/usr/share/nginx/html..."
+	rsync -avz --delete dist/ $(DEPLOY_HOST):/usr/share/nginx/html/
 	@echo "Deployment complete!"
