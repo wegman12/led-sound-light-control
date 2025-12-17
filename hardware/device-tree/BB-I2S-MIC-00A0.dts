@@ -28,7 +28,7 @@
         __overlay__ {
             i2s_pins: pinmux_i2s_pins {
                 pinctrl-single,pins = <
-                    0x19c 0x22  /* P9_28: mcasp0_axr2 (Mode 2, INPUT | PULLDOWN) */
+                    0x198 0x20  /* P9_30: mcasp0_axr0 (Mode 0, INPUT | PULLDOWN) */
                     0x194 0x20  /* P9_29: mcasp0_fsx (Mode 0, INPUT | PULLDOWN) */
                     0x190 0x20  /* P9_31: mcasp0_aclkx (Mode 0, INPUT | PULLDOWN) */
                 >;
@@ -53,10 +53,10 @@
              * 0 = inactive
              * 1 = TX (transmit)
              * 2 = RX (receive)
-             * We use AXR2 (index 2) for receive
+             * We use AXR0 (index 0) for receive
              */
             serial-dir = <
-                0 0 2 0
+                2 0 0 0
                 0 0 0 0
                 0 0 0 0
                 0 0 0 0

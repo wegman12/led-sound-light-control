@@ -11,7 +11,7 @@
 |-------------|----------|---------------------|-------------|
 | **VDD** | Power (3.3V) | **P9_3** | 3.3V DC power supply |
 | **GND** | Ground | **P9_1** | Digital ground |
-| **SD** | Serial Data | **P9_28** | I2S data (McASP0_AXR2) |
+| **SD** | Serial Data | **P9_30** | I2S data (McASP0_AXR0) |
 | **WS** | Word Select | **P9_29** | I2S frame sync (McASP0_FSX) |
 | **SCK** | Serial Clock | **P9_31** | I2S bit clock (McASP0_ACLKX) |
 | **L/R** | Channel Select | **GND** | Left channel (connect to GND) |
@@ -49,8 +49,8 @@
         UART [21] ●  ● [22] GPIO
         GPIO [23] ●  ● [24] UART
         GPIO [25] ●  ● [26] UART
-        GPIO [27] ●  ● [28] I2S_DATA (SD)     ◄─── INMP441 SD
-     I2S_WS  [29] ●  ● [30] GPIO              ◄─── INMP441 WS
+        GPIO [27] ●  ● [28] (not used)
+     I2S_WS  [29] ●  ● [30] I2S_DATA (SD)     ◄─── INMP441 SD
      I2S_CLK [31] ●  ● [32] VDD               ◄─── INMP441 SCK
         AIN4 [33] ●  ● [34] AGND
         AIN6 [35] ●  ● [36] AIN5
@@ -62,7 +62,7 @@
 
     P9_1  (GND)   ────────────────► INMP441 GND
     P9_3  (3.3V)  ────────────────► INMP441 VDD
-    P9_28 (I2S_DATA) ─────────────► INMP441 SD
+    P9_30 (I2S_DATA) ─────────────► INMP441 SD
     P9_29 (I2S_WS)   ─────────────► INMP441 WS
     P9_31 (I2S_CLK)  ─────────────► INMP441 SCK
     P9_1  (GND)   ────────────────► INMP441 L/R
