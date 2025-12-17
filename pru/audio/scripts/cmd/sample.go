@@ -27,10 +27,11 @@ const (
 // Layout: Configuration (written by host) + Status (written by PRU)
 type AudioControlBlock struct {
 	// === Configuration Section (written by host, read by PRU) ===
-	FFTEnable     uint32  // 1 = FFT enabled, 0 = disabled
-	BassMaxHz     uint32  // Bass upper frequency boundary (Hz)
-	MidLowMaxHz   uint32  // Mid-low upper frequency boundary (Hz)
-	MidHighMaxHz  uint32  // Mid-high upper frequency boundary (Hz)
+	FFTEnable            uint32  // 1 = FFT enabled, 0 = disabled
+	BassMaxHz            uint32  // Bass upper frequency boundary (Hz)
+	MidLowMaxHz          uint32  // Mid-low upper frequency boundary (Hz)
+	MidHighMaxHz         uint32  // Mid-high upper frequency boundary (Hz)
+	SmoothingAlphaX1000  uint32  // Temporal smoothing factor (0-1000, where 1000 = 1.0)
 
 	// === Status Section (written by PRU, read by host) ===
 	Status           uint32  // PRU running status
@@ -54,6 +55,12 @@ type AudioControlBlock struct {
 	MidLowAvg        uint32  // Mid-low average magnitude per bin
 	MidHighAvg       uint32  // Mid-high average magnitude per bin
 	TrebleAvg        uint32  // Treble average magnitude per bin
+
+	// Temporal smoothing state (previous values)
+	BassPrev         uint32  // Previous bass value for smoothing
+	MidLowPrev       uint32  // Previous mid_low value for smoothing
+	MidHighPrev      uint32  // Previous mid_high value for smoothing
+	TreblePrev       uint32  // Previous treble value for smoothing
 }
 
 // sampleCmd represents the sample command

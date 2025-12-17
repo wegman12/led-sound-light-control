@@ -449,9 +449,8 @@ void main(void) {
 
                 /* Pre-process Step 2: Apply Hann window using 32-bit arithmetic
                  * This reduces spectral leakage without overflow concerns
-                 * TEMPORARILY DISABLED for debugging
                  */
-                // apply_hann_window_32bit(temp_buffer, BUFFER_SIZE);
+                apply_hann_window_32bit(temp_buffer, BUFFER_SIZE);
 
                 /* Convert preprocessed 32-bit samples to 16-bit for FFT
                  * We can reuse the completed_buffer space since we're done with original data
