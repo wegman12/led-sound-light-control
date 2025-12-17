@@ -21,10 +21,11 @@ const (
 // Layout: Configuration (written by host) + Status (written by PRU)
 type AudioControlBlock struct {
 	// === Configuration Section (written by host, read by PRU) ===
-	FFTEnable    uint32 // 1 = FFT enabled, 0 = disabled
-	BassMaxHz    uint32 // Bass upper frequency boundary (Hz)
-	MidLowMaxHz  uint32 // Mid-low upper frequency boundary (Hz)
-	MidHighMaxHz uint32 // Mid-high upper frequency boundary (Hz)
+	FFTEnable           uint32 // 1 = FFT enabled, 0 = disabled
+	BassMaxHz           uint32 // Bass upper frequency boundary (Hz)
+	MidLowMaxHz         uint32 // Mid-low upper frequency boundary (Hz)
+	MidHighMaxHz        uint32 // Mid-high upper frequency boundary (Hz)
+	SmoothingAlphaX1000 uint32 // Temporal smoothing factor (0-1000, where 1000 = 1.0)
 
 	// === Status Section (written by PRU, read by host) ===
 	Status           uint32 // PRU running status
