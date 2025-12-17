@@ -47,6 +47,7 @@
 
             op-mode = <0>;  /* MCASP_IIS_MODE */
             tdm-slots = <2>;
+            slot-width = <32>;  /* 32-bit slots for 24-bit data */
             num-serializer = <16>;
 
             /* Serial data pins:
@@ -81,11 +82,15 @@
                 cpu_master: simple-audio-card,cpu {
                     sound-dai = <&mcasp0>;
                     system-clock-frequency = <24576000>;
+                    dai-tdm-slot-num = <2>;
+                    dai-tdm-slot-width = <32>;
                 };
 
                 simple-audio-card,codec {
                     sound-dai = <&codec>;
                     system-clock-frequency = <24576000>;
+                    dai-tdm-slot-num = <2>;
+                    dai-tdm-slot-width = <32>;
                 };
             };
 
