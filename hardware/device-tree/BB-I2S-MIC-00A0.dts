@@ -89,9 +89,9 @@
                 };
             };
 
-            codec: snd_soc_dummy_codec {
+            codec: spdif_receiver {
                 #sound-dai-cells = <0>;
-                compatible = "linux,snd-soc-dummy";
+                compatible = "linux,spdif-dir";
                 status = "okay";
             };
         };
