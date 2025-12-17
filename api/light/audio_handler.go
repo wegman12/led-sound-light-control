@@ -14,19 +14,29 @@ import (
 
 // AudioHandler manages HTTP endpoints for audio-reactive lighting control
 type AudioHandler struct {
-	ctx           context.Context
-	audioProvider behavior.AudioProvider
-	pruManager    *audio.PRUManager
-	cancelAudio   context.CancelFunc
-	mu            sync.Mutex
-	isStreaming   bool
-	logger        *zap.Logger
+	ctx             context.Context
+	audioProvider   behavior.AudioProvider
+	configManager   *AudioTuningConfigManager
+	wsHandler       *AudioWebSocketHandler
+	pruManager      *audio.PRUManager
+	cancelAudio     context.CancelFunc
+	mu              sync.Mutex
+	isStreaming     bool
+	logger          *zap.Logger
 }
 
-func newAudioHandler(ctx context.Context, audioProvider behavior.AudioProvider, logger *zap.Logger) *AudioHandler {
+func newAudioHandler(
+	ctx context.Context,
+	audioProvider behavior.AudioProvider,
+	configManager *AudioTuningConfigManager,
+	wsHandler *AudioWebSocketHandler,
+	logger *zap.Logger,
+) *AudioHandler {
 	return &AudioHandler{
 		ctx:           ctx,
 		audioProvider: audioProvider,
+		configManager: configManager,
+		wsHandler:     wsHandler,
 		logger:        logger,
 	}
 }
@@ -213,6 +223,7 @@ func (h *AudioHandler) handleAudioStatus(w http.ResponseWriter, r *http.Request)
 }
 
 // handleAudioConfig returns recommended audio scaling configuration
+// DEPRECATED: Use handleGetTuningConfig instead
 func (h *AudioHandler) handleAudioConfig(w http.ResponseWriter, r *http.Request) {
 	// These values are from the audio analysis (analysis/audio/audio_analysis.ipynb)
 	// Based on analysis of bagpipes.csv, crazy_frog.csv, and christmas.csv
@@ -238,4 +249,73 @@ func (h *AudioHandler) handleAudioConfig(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(config)
+}
+
+// handleGetTuningConfig returns the current audio tuning configuration
+func (h *AudioHandler) handleGetTuningConfig(w http.ResponseWriter, r *http.Request) {
+	config := h.configManager.GetConfig()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(config)
+}
+
+// handleUpdateTuningConfig updates the audio tuning configuration
+func (h *AudioHandler) handleUpdateTuningConfig(w http.ResponseWriter, r *http.Request) {
+	var config AudioTuningConfig
+	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
+		h.logger.Error("Failed to decode tuning config", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid request body: " + err.Error(),
+		})
+		return
+	}
+
+	// Update configuration
+	if err := h.configManager.UpdateConfig(config); err != nil {
+		h.logger.Error("Failed to update tuning config", zap.Error(err))
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid configuration: " + err.Error(),
+		})
+		return
+	}
+
+	// Notify WebSocket clients of config update
+	h.wsHandler.NotifyConfigUpdate(config)
+
+	h.logger.Info("Audio tuning configuration updated")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Configuration updated successfully",
+		"config":  config,
+	})
+}
+
+// handleSaveTuningConfig saves the current tuning configuration to file
+func (h *AudioHandler) handleSaveTuningConfig(w http.ResponseWriter, r *http.Request) {
+	if err := h.configManager.SaveConfig(); err != nil {
+		h.logger.Error("Failed to save tuning config", zap.Error(err))
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Failed to save configuration: " + err.Error(),
+		})
+		return
+	}
+
+	config := h.configManager.GetConfig()
+	h.logger.Info("Audio tuning configuration saved to file")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Configuration saved successfully",
+		"config":  config,
+	})
+}
+
+// handleTuningWebSocket handles WebSocket connections for audio tuning
+func (h *AudioHandler) handleTuningWebSocket(w http.ResponseWriter, r *http.Request) {
+	h.wsHandler.HandleWebSocket(w, r)
 }

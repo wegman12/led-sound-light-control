@@ -45,3 +45,20 @@ export async function post<T>(endpoint: string, data?: unknown): Promise<T> {
   });
   return handleResponse<T>(response);
 }
+
+export async function put<T>(endpoint: string, data?: unknown): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: data ? JSON.stringify(data) : undefined,
+  });
+  return handleResponse<T>(response);
+}
+
+export function getWebSocketUrl(endpoint: string): string {
+  const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
+  const url = API_BASE_URL.replace(/^https?:\/\//, '');
+  return `${wsProtocol}://${url}${endpoint}`;
+}

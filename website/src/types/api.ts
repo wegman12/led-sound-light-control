@@ -110,3 +110,42 @@ export interface SimulationResponse {
   results: SimulationResult[];
   message?: string;
 }
+
+export interface AudioTuningBandConfig {
+  scaling_factor: number;
+  noise_threshold: number;
+  min_power_value: number;
+  max_power_value: number;
+  smoothing: number;
+}
+
+export interface AudioTuningConfig {
+  bass_cutoff: number;
+  mid_high_cutoff: number;
+  treble_cutoff: number;
+  bass: AudioTuningBandConfig;
+  mid_low: AudioTuningBandConfig;
+  mid_high: AudioTuningBandConfig;
+  treble: AudioTuningBandConfig;
+}
+
+export interface RawAudioData {
+  bass: number;
+  mid_low: number;
+  mid_high: number;
+  treble: number;
+}
+
+export interface ProcessedAudioData {
+  bass: number;
+  mid_low: number;
+  mid_high: number;
+  treble: number;
+}
+
+export interface AudioStreamData {
+  timestamp: string;
+  raw: RawAudioData;
+  processed: ProcessedAudioData;
+  config: AudioTuningConfig;
+}
