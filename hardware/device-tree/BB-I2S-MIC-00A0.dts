@@ -22,27 +22,30 @@
     part-number = "BB-I2S-MIC";
     version = "00A0";
 
-    /* Pin mux configuration */
+    /* Pin mux configuration - TEMPORARILY DISABLED FOR PRU TESTING */
+    /*
     fragment@0 {
         target = <&am33xx_pinmux>;
         __overlay__ {
             i2s_pins: pinmux_i2s_pins {
                 pinctrl-single,pins = <
-                    0x198 0x20  /* P9_30: mcasp0_axr0 (Mode 0, INPUT | PULLDOWN) - Data from mic */
-                    0x194 0x00  /* P9_29: mcasp0_fsx (Mode 0, OUTPUT | PULLDOWN) - Frame sync clock */
-                    0x190 0x00  /* P9_31: mcasp0_aclkx (Mode 0, OUTPUT | PULLDOWN) - Bit clock */
+                    0x198 0x20  // P9_30: mcasp0_axr0 (Mode 0, INPUT | PULLDOWN) - Data from mic
+                    0x194 0x00  // P9_29: mcasp0_fsx (Mode 0, OUTPUT | PULLDOWN) - Frame sync clock
+                    0x190 0x00  // P9_31: mcasp0_aclkx (Mode 0, OUTPUT | PULLDOWN) - Bit clock
                 >;
             };
         };
     };
+    */
 
     /* McASP0 configuration */
     fragment@1 {
         target = <&mcasp0>;
         __overlay__ {
             #sound-dai-cells = <0>;
-            pinctrl-names = "default";
-            pinctrl-0 = <&i2s_pins>;
+            /* pinctrl disabled for PRU testing */
+            /* pinctrl-names = "default"; */
+            /* pinctrl-0 = <&i2s_pins>; */
             status = "okay";
 
             op-mode = <0>;  /* MCASP_IIS_MODE */
@@ -63,7 +66,7 @@
                 0 0 0 0
             >;
 
-            tx-num-evt = <32>;
+            tx-num-evt = <0>;   /* No TX, capture only */
             rx-num-evt = <32>;
         };
     };
