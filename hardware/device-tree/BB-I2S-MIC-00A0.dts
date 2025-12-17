@@ -1,0 +1,104 @@
+/*
+ * Device Tree Overlay for INMP441 I2S MEMS Microphone
+ * BeagleBone Black - McASP0 Configuration
+ *
+ * Pins used:
+ *   P9_28 - McASP0_AXR2 (I2S Data In)
+ *   P9_29 - McASP0_FSX  (I2S Frame Sync / Word Select)
+ *   P9_31 - McASP0_ACLKX (I2S Bit Clock)
+ *
+ * Sample rate: 48000 Hz
+ * Format: I2S
+ * Channels: 1 (Mono - left channel)
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,beaglebone-green";
+
+    /* Identification */
+    part-number = "BB-I2S-MIC";
+    version = "00A0";
+
+    /* Pin mux configuration */
+    fragment@0 {
+        target = <&am33xx_pinmux>;
+        __overlay__ {
+            i2s_pins: pinmux_i2s_pins {
+                pinctrl-single,pins = <
+                    0x19c 0x22  /* P9_28: mcasp0_axr2 (Mode 2, INPUT | PULLDOWN) */
+                    0x194 0x20  /* P9_29: mcasp0_fsx (Mode 0, INPUT | PULLDOWN) */
+                    0x190 0x20  /* P9_31: mcasp0_aclkx (Mode 0, INPUT | PULLDOWN) */
+                >;
+            };
+        };
+    };
+
+    /* McASP0 configuration */
+    fragment@1 {
+        target = <&mcasp0>;
+        __overlay__ {
+            #sound-dai-cells = <0>;
+            pinctrl-names = "default";
+            pinctrl-0 = <&i2s_pins>;
+            status = "okay";
+
+            op-mode = <0>;  /* MCASP_IIS_MODE */
+            tdm-slots = <2>;
+            num-serializer = <16>;
+
+            /* Serial data pins:
+             * 0 = inactive
+             * 1 = TX (transmit)
+             * 2 = RX (receive)
+             * We use AXR2 (index 2) for receive
+             */
+            serial-dir = <
+                0 0 2 0
+                0 0 0 0
+                0 0 0 0
+                0 0 0 0
+            >;
+
+            tx-num-evt = <32>;
+            rx-num-evt = <32>;
+        };
+    };
+
+    /* Audio card configuration */
+    fragment@2 {
+        target-path = "/";
+        __overlay__ {
+            sound {
+                compatible = "simple-audio-card";
+                simple-audio-card,name = "I2S-Microphone";
+                simple-audio-card,format = "i2s";
+                simple-audio-card,bitclock-master = <&sound_master>;
+                simple-audio-card,frame-master = <&sound_master>;
+
+                simple-audio-card,widgets =
+                    "Microphone", "Mic Input";
+                simple-audio-card,routing =
+                    "Mic Input", "Microphone";
+
+                simple-audio-card,cpu {
+                    sound-dai = <&mcasp0>;
+                    system-clock-frequency = <24576000>;
+                };
+
+                sound_master: simple-audio-card,codec {
+                    sound-dai = <&codec>;
+                    system-clock-frequency = <24576000>;
+                };
+            };
+
+            codec: spdif_receiver {
+                #sound-dai-cells = <0>;
+                compatible = "linux,spdif-dir";
+                status = "okay";
+            };
+        };
+    };
+};
