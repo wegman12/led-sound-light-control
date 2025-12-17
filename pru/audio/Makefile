@@ -34,12 +34,19 @@ INCLUDE := --include_path=$(SRC_DIR) \
 # Linker command file
 LDFILE := am335x_pru.cmd
 
-# Source files
+# Source files for audio processing firmware
 SOURCES := pru1_audio.c fft.c
 OBJECTS := $(GEN_DIR)/pru1_audio.obj $(GEN_DIR)/fft.obj
 
-# Output firmware
+# Output firmware for audio processing
 TARGET := $(GEN_DIR)/pru1_audio.out
+
+# Source files for raw capture firmware (no FFT)
+RAW_SOURCES := pru1_raw_capture.c
+RAW_OBJECTS := $(GEN_DIR)/pru1_raw_capture.obj
+
+# Output firmware for raw capture
+RAW_TARGET := $(GEN_DIR)/pru1_raw_capture.out
 
 # Go parameters
 GOCMD := go
@@ -51,7 +58,8 @@ UTIL_BINARY := audio-util
 UTIL_BINARY_BBB := audio-util-bbb
 
 # Phony targets
-.PHONY: all clean install help build-util build-util-bbb deploy-util deploy-all
+.PHONY: all clean install help build-util build-util-bbb deploy-util deploy-all \
+        raw raw-install raw-deploy-all
 
 # Default target
 all: $(GEN_DIR) $(TARGET)
@@ -76,6 +84,23 @@ $(TARGET): $(OBJECTS) $(LDFILE)
 	$(LD) $(CFLAGS) -z $(LIB_INCLUDE) $(LFLAGS) -o $(TARGET) $(OBJECTS) \
 		-m $(GEN_DIR)/pru1_audio.map $(LDFILE) --library=libc.a
 
+# === Raw Capture Firmware Targets ===
+
+# Build raw capture firmware
+raw: $(GEN_DIR) $(RAW_TARGET)
+	@echo "PRU1 raw capture firmware build complete: $(RAW_TARGET)"
+
+# Compile raw capture source to object file
+$(GEN_DIR)/pru1_raw_capture.obj: pru1_raw_capture.c resource_table_empty.h | $(GEN_DIR)
+	@echo "Compiling pru1_raw_capture.c..."
+	$(CC) $(INCLUDE) $(CFLAGS) -c pru1_raw_capture.c -o $(GEN_DIR)/pru1_raw_capture.obj
+
+# Link raw capture object file to create firmware
+$(RAW_TARGET): $(RAW_OBJECTS) $(LDFILE)
+	@echo "Linking PRU1 raw capture firmware..."
+	$(LD) $(CFLAGS) -z $(LIB_INCLUDE) $(LFLAGS) -o $(RAW_TARGET) $(RAW_OBJECTS) \
+		-m $(GEN_DIR)/pru1_raw_capture.map $(LDFILE) --library=libc.a
+
 # Clean build artifacts
 clean:
 	@echo "Cleaning PRU1 audio build artifacts..."
@@ -88,6 +113,14 @@ install: $(TARGET)
 	@echo "Installing PRU1 audio firmware to /lib/firmware/am335x-pru1-fw..."
 	@sudo cp $(TARGET) /lib/firmware/am335x-pru1-fw
 	@echo "Firmware installed. Reload PRU1 with:"
+	@echo "  echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc2/state"
+	@echo "  echo 'start' | sudo tee /sys/class/remoteproc/remoteproc2/state"
+
+# Install raw capture firmware to BeagleBone /lib/firmware
+raw-install: $(RAW_TARGET)
+	@echo "Installing PRU1 raw capture firmware to /lib/firmware/am335x-pru1-fw..."
+	@sudo cp $(RAW_TARGET) /lib/firmware/am335x-pru1-fw
+	@echo "Raw capture firmware installed. Reload PRU1 with:"
 	@echo "  echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc2/state"
 	@echo "  echo 'start' | sudo tee /sys/class/remoteproc/remoteproc2/state"
 
@@ -142,14 +175,42 @@ deploy-all:
 	@echo "  cd $(DEPLOY_PATH)"
 	@echo "  sudo ./$(UTIL_BINARY) test"
 
+# Deploy raw capture firmware to BeagleBone (builds on target)
+raw-deploy-all:
+	@echo "Deploying PRU1 raw capture firmware to $(DEPLOY_HOST)..."
+	@echo "Copying PRU source files to BeagleBone..."
+	@ssh $(DEPLOY_HOST) "mkdir -p $(DEPLOY_PATH)"
+	@scp -r *.c *.h *.cmd Makefile $(DEPLOY_HOST):$(DEPLOY_PATH)
+	@echo "Building PRU1 raw capture firmware on BeagleBone..."
+	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_PATH) && make clean && make raw"
+	@echo "Installing and loading raw capture firmware..."
+	@ssh $(DEPLOY_HOST) "sudo cp $(DEPLOY_PATH)gen/pru1_raw_capture.out /lib/firmware/am335x-pru1-fw && \
+	                     echo 'Stopping PRU1 (if running)...' && \
+	                     (echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc2/state > /dev/null 2>&1 || true) && \
+	                     sleep 1 && \
+	                     echo 'Starting PRU1...' && \
+	                     echo 'start' | sudo tee /sys/class/remoteproc/remoteproc2/state > /dev/null && \
+	                     sleep 1 && \
+	                     echo 'Verifying PRU1 state...' && \
+	                     cat /sys/class/remoteproc/remoteproc2/state"
+	@echo ""
+	@echo "==================================="
+	@echo "Raw Capture Deployment complete!"
+	@echo "==================================="
+	@echo "PRU1 raw capture firmware: $(DEPLOY_PATH)gen/pru1_raw_capture.out -> /lib/firmware/am335x-pru1-fw"
+	@echo ""
+	@echo "The PRU is now running raw capture mode. Use the 'record-pru-raw' CLI command to capture samples."
+
 # Help target
 help:
 	@echo "PRU1 Audio Sampling Build System"
 	@echo ""
 	@echo "Firmware Targets:"
-	@echo "  all         - Build PRU1 firmware (default)"
+	@echo "  all         - Build PRU1 audio processing firmware (default)"
+	@echo "  raw         - Build PRU1 raw capture firmware (for parameter testing)"
 	@echo "  clean       - Remove all build artifacts (firmware + utility)"
-	@echo "  install     - Install firmware to /lib/firmware (requires sudo)"
+	@echo "  install     - Install audio firmware to /lib/firmware (requires sudo)"
+	@echo "  raw-install - Install raw capture firmware to /lib/firmware (requires sudo)"
 	@echo ""
 	@echo "Utility Targets:"
 	@echo "  build-util     - Build audio utility for local testing (amd64)"
@@ -157,12 +218,19 @@ help:
 	@echo "  deploy-util    - Deploy utility to BeagleBone"
 	@echo ""
 	@echo "Deployment Targets:"
-	@echo "  deploy-all  - Deploy firmware and utility to BeagleBone (recommended)"
+	@echo "  deploy-all     - Deploy audio firmware and utility to BeagleBone (recommended)"
+	@echo "  raw-deploy-all - Deploy raw capture firmware to BeagleBone"
 	@echo ""
 	@echo "Help:"
-	@echo "  help        - Show this help message"
+	@echo "  help           - Show this help message"
 	@echo ""
 	@echo "Requirements:"
 	@echo "  - TI PRU Code Generation Tools (clpru) for firmware"
 	@echo "  - Go 1.23+ for utility"
 	@echo "  - Install clpru with: sudo apt-get install ti-pru-cgt-installer"
+	@echo ""
+	@echo "Raw Capture Workflow:"
+	@echo "  1. make raw-deploy-all          # Deploy raw capture firmware"
+	@echo "  2. record-pru-raw -o samples.bin # Capture raw audio samples"
+	@echo "  3. analyze-audio-params samples.bin # Find optimal parameters"
+	@echo "  4. make deploy-all              # Switch back to audio firmware"

@@ -341,3 +341,96 @@ func writeHeader(f *os.File) {
 		fmt.Println(err)
 	}
 }
+
+// === Raw Capture Command ===
+
+type rawCaptureConfig struct {
+	outputFile     string
+	duration       time.Duration
+	sampleInterval time.Duration
+	debug          bool
+}
+
+var rawCaptureCfg rawCaptureConfig
+
+func MakeRawCaptureCmd() *cobra.Command {
+	rawCapture := &cobra.Command{
+		Use:   "record-pru-raw",
+		Short: "Record raw ADC samples from PRU1 to binary file",
+		Long: `Captures raw 12-bit ADC samples at 40 kHz from PRU1 raw capture firmware.
+Writes samples as binary little-endian uint16 values for offline analysis.
+
+This command requires the raw capture firmware to be loaded:
+  cd pru/audio && make raw-deploy-all
+
+Use this to capture baseline and music samples for parameter optimization.`,
+		RunE: doRawCapture,
+	}
+
+	rawCapture.Flags().StringVarP(&rawCaptureCfg.outputFile, "output", "o", "raw-samples.bin", "output binary file path")
+	rawCapture.Flags().DurationVarP(&rawCaptureCfg.duration, "duration", "t", 60*time.Second, "recording duration (0 for unlimited)")
+	rawCapture.Flags().DurationVarP(&rawCaptureCfg.sampleInterval, "interval", "i", 25*time.Millisecond, "sampling interval (time between reads)")
+	rawCapture.Flags().BoolVarP(&rawCaptureCfg.debug, "debug", "d", false, "enable debug logging")
+
+	return rawCapture
+}
+
+func doRawCapture(cmd *cobra.Command, args []string) error {
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+	defer stop()
+
+	// Initialize logger
+	var logger *zap.Logger
+	var err error
+	if rawCaptureCfg.debug {
+		logger, err = zap.NewDevelopment()
+	} else {
+		logger, err = zap.NewProduction()
+	}
+	if err != nil {
+		fmt.Println("failed to initialize logger - using nop logger")
+		fmt.Println(err)
+		logger = zap.NewNop()
+	}
+	defer logger.Sync()
+
+	// Create PRU raw sampler
+	sampler, err := NewPRURawSampler()
+	if err != nil {
+		logger.Fatal("failed to create PRU raw sampler", zap.Error(err))
+	}
+	defer sampler.Close()
+
+	// Get initial status
+	status := sampler.GetStatus()
+	logger.Info("PRU raw capture firmware detected",
+		zap.Uint32("status", status.Status),
+		zap.Uint32("total_samples", status.TotalSamples),
+		zap.Uint32("min_sample", status.MinSample),
+		zap.Uint32("max_sample", status.MaxSample),
+	)
+
+	// Start streaming samples to file
+	// Use a goroutine to handle context cancellation
+	errChan := make(chan error, 1)
+	go func() {
+		err := sampler.StreamSamples(rawCaptureCfg.duration, rawCaptureCfg.outputFile, rawCaptureCfg.sampleInterval)
+		errChan <- err
+	}()
+
+	// Wait for completion or cancellation
+	select {
+	case <-ctx.Done():
+		logger.Info("Recording cancelled by user")
+		// Give some time for cleanup
+		time.Sleep(100 * time.Millisecond)
+		return nil
+	case err := <-errChan:
+		if err != nil {
+			logger.Error("Recording failed", zap.Error(err))
+			return err
+		}
+		logger.Info("Recording completed successfully")
+		return nil
+	}
+}

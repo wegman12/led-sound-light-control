@@ -36,6 +36,7 @@ func Execute() {
 	rootCmd.AddCommand(server.MakeServerCmd())
 	rootCmd.AddCommand(audio.MakeSoundTesterCmd())
 	rootCmd.AddCommand(audio.MakePRURecordCmd())
+	rootCmd.AddCommand(audio.MakeRawCaptureCmd())
 	rootCmd.AddCommand(remote.MakeRemoteCmd())
 	err := rootCmd.Execute()
 	if err != nil {

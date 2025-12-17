@@ -106,3 +106,133 @@ After reviewing the analysis:
 3. Test with additional music genres
 4. Fine-tune frequency band boundaries if needed
 5. Add smoothing for stable LED transitions
+
+---
+
+# Raw Sample Capture and Parameter Optimization
+
+## Overview
+
+If the processed FFT data shows no difference between baseline and music, you can use the raw sample capture system to perform offline parameter optimization. This allows testing hundreds of configurations without recompiling/deploying firmware.
+
+## Workflow
+
+### 1. Deploy Raw Capture Firmware
+
+The raw capture firmware samples ADC at 40 kHz without any processing:
+
+```bash
+cd pru/audio
+make raw-deploy-all
+```
+
+### 2. Capture Baseline Samples
+
+Capture audio with **no music** (room noise/silence):
+
+```bash
+record-pru-raw -o baseline.bin -t 60s
+```
+
+### 3. Capture Music Samples
+
+Play music at **loud volume** and capture:
+
+```bash
+record-pru-raw -o music.bin -t 60s
+```
+
+**Tips:**
+- Use music with strong bass and varied dynamics
+- Play at typical volume level for LED use
+- Ensure audio input is connected properly
+
+### 4. Copy Samples to Development Machine
+
+```bash
+scp bbb1.wegman:~/baseline.bin analysis/audio/
+scp bbb1.wegman:~/music.bin analysis/audio/
+```
+
+### 5. Run Parameter Optimization
+
+```bash
+python optimize_audio_params.py baseline.bin music.bin
+```
+
+This tests:
+- Window functions: Hann, Hamming, Blackman, none
+- Smoothing alpha: 0.3, 0.5, 0.7, 0.9, 1.0
+- Frequency band boundaries: 4 configurations
+
+**Requirements:**
+```bash
+pip install numpy scipy matplotlib pandas
+```
+
+### 6. Review Results
+
+Check `optimization_results/`:
+- `optimization_report.txt` - Recommendations
+- `optimization_results.json` - Machine-readable data
+- `optimization_results.csv` - Spreadsheet data
+- `optimization_analysis.png` - Visualization
+
+### 7. Apply Recommended Settings
+
+Update `pru/audio/pru1_audio.c` with optimal values:
+
+```c
+#define BASS_MAX_HZ         200   // From optimization
+#define MIDLOW_MAX_HZ       1500
+#define MIDHIGH_MAX_HZ      4000
+
+// In main():
+ctrl->smoothing_alpha_x1000 = 500; // alpha = 0.5
+```
+
+### 8. Deploy Updated Firmware
+
+```bash
+cd pru/audio
+make deploy-all  # Switches back to audio processing firmware
+```
+
+## Key Metrics
+
+- **SNR (Signal-to-Noise Ratio)**:
+  - \>20 dB = Excellent
+  - 10-20 dB = Good
+  - <10 dB = Poor (music doesn't stand out)
+
+- **CV (Coefficient of Variation)**:
+  - \>50% = High variability (dynamic LEDs)
+  - 20-50% = Moderate
+  - <20% = Low (static appearance)
+
+## Troubleshooting
+
+### Raw capture firmware not detected
+```bash
+cd pru/audio && make raw-deploy-all
+cat /sys/class/remoteproc/remoteproc2/state  # Should show "running"
+```
+
+### Buffer overruns
+Decrease sampling interval:
+```bash
+record-pru-raw -o samples.bin -i 10ms
+```
+
+### Not enough samples
+Capture longer or check PRU status:
+```bash
+dmesg | grep pru
+```
+
+## Files
+
+- `optimize_audio_params.py` - Parameter optimization script
+- `pru/audio/pru1_raw_capture.c` - Raw capture PRU firmware
+- `api/audio/pru_raw_sampler.go` - Raw sample reader
+- `api/audio/cmd.go` - CLI commands
