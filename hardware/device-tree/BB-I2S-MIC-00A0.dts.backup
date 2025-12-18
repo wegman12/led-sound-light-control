@@ -1,22 +1,25 @@
 /*
  * Device Tree Overlay for INMP441 I2S MEMS Microphone
- * BeagleBone Black - McASP0 Configuration with INTERNAL Clock (DPLL_PER)
+ * BeagleBone Black - McASP0 Configuration with External Clock
  *
  * Hardware Required:
  *   - INMP441 I2S MEMS Microphone
+ *   - 24.576 MHz crystal oscillator (e.g., Abracon ASFLMB-24.576MHZ-LC-T)
  *
  * Pins used:
+ *   P9_12 - McASP0_AHCLKX (External 24.576 MHz clock INPUT from oscillator)
  *   P9_29 - McASP0_FSX    (I2S Frame Sync / Word Select OUTPUT to mic)
  *   P9_30 - McASP0_AXR0   (I2S Data INPUT from mic)
  *   P9_31 - McASP0_ACLKX  (I2S Bit Clock OUTPUT to mic)
  *
- * Clock Strategy:
- *   This overlay tests using AM335x internal DPLL_PER_M2 to generate audio clocks
- *   instead of requiring an external 24.576 MHz oscillator.
+ * Oscillator Connections:
+ *   Oscillator VCC    → BeagleBone P9_03 or P9_04 (3.3V)
+ *   Oscillator GND    → BeagleBone P9_01 or P9_02 (GND)
+ *   Oscillator Output → BeagleBone P9_12 (AHCLKX)
+ *   Oscillator Enable → 3.3V (always on) or GPIO (software control)
  *
- *   Using fck_parent property to reparent mcasp0_fck to dpll_per_m2_ck (~192 MHz)
- *   McASP divides 192 MHz by 62.5 → 3.072 MHz BCLK
- *   BCLK / 64 → 48 kHz sample rate
+ * Clock Hierarchy:
+ *   24.576 MHz (AHCLKX) → Divided by McASP → 3.072 MHz BCLK → 48 kHz sample rate
  *
  * Sample rate: 48000 Hz
  * Format: I2S
@@ -39,6 +42,7 @@
         __overlay__ {
             i2s_pins: pinmux_i2s_pins {
                 pinctrl-single,pins = <
+                    0x078 0x20  // P9_12: mcasp0_ahclkx (Mode 0, INPUT | PULLDOWN) - External 24.576 MHz clock input
                     0x198 0x20  // P9_30: mcasp0_axr0 (Mode 0, INPUT | PULLDOWN) - Data from mic
                     0x194 0x00  // P9_29: mcasp0_fsx (Mode 0, OUTPUT | PULLDOWN) - Frame sync clock
                     0x19C 0x00  // P9_31: mcasp0_aclkx (Mode 0, OUTPUT | PULLDOWN) - Bit clock
@@ -75,6 +79,13 @@
             >;
 
             rx-num-evt = <32>;
+
+            /* AUXCLK configuration for internal clock generation
+             * System clock (AUXCLK) = 24 MHz from mcasp0_fck
+             * Sample rate = 48 kHz
+             * auxclk-fs-ratio = 24000000 / 48000 = 500
+             */
+            auxclk-fs-ratio = <500>;
         };
     };
 
@@ -82,6 +93,23 @@
     fragment@2 {
         target-path = "/";
         __overlay__ {
+            /* External 24.576 MHz audio clock oscillator */
+            clk_mcasp0_fixed: clk_mcasp0_fixed {
+                #clock-cells = <0>;
+                compatible = "fixed-clock";
+                clock-frequency = <24576000>;  /* 24.576 MHz external oscillator */
+            };
+
+            /* Optional: GPIO-gated clock if oscillator has enable pin
+             * connected to a GPIO. Omit this if oscillator is always-on.
+            clk_mcasp0: clk_mcasp0 {
+                #clock-cells = <0>;
+                compatible = "gpio-gate-clock";
+                clocks = <&clk_mcasp0_fixed>;
+                enable-gpios = <&gpio1 28 0>;  // P9_12 - adjust if using different GPIO
+            };
+            */
+
             sound {
                 compatible = "simple-audio-card";
                 simple-audio-card,name = "I2S-Microphone";
@@ -91,8 +119,7 @@
 
                 cpu_master: simple-audio-card,cpu {
                     sound-dai = <&mcasp0>;
-                    /* Using default 24 MHz mcasp0_fck for now */
-                    system-clock-frequency = <24000000>;
+                    clocks = <&clk_mcasp0_fixed>;  /* Use external clock, not mcasp0_fck */
                 };
 
                 simple-audio-card,codec {
