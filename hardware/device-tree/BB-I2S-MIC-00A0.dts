@@ -84,6 +84,7 @@
 
                 cpu_master: simple-audio-card,cpu {
                     sound-dai = <&mcasp0>;
+                    clocks = <&mcasp0_fck>;
                     system-clock-direction-out;
                     dai-tdm-slot-num = <2>;
                     dai-tdm-slot-width = <32>;
