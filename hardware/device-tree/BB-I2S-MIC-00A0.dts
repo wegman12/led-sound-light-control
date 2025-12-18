@@ -45,13 +45,6 @@
             pinctrl-0 = <&i2s_pins>;
             status = "okay";
 
-            /* Clock configuration for master mode */
-            clocks = <&mcasp0_fck>;
-            clock-names = "fck";
-            assigned-clocks = <&mcasp0_fck>;
-            assigned-clock-parents = <&sys_clkin_ck>;
-            ti,mcasp-auxclk-mode = "out";
-
             op-mode = <0>;  /* MCASP_IIS_MODE */
             tdm-slots = <2>;
             slot-width = <32>;  /* 32-bit slots for 24-bit data */
@@ -91,6 +84,7 @@
 
                 cpu_master: simple-audio-card,cpu {
                     sound-dai = <&mcasp0>;
+                    system-clock-direction-out;
                     dai-tdm-slot-num = <2>;
                     dai-tdm-slot-width = <32>;
                 };
