@@ -4,13 +4,7 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="09c257aa-1b05-4518-92b7-4c7384df7ebc" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.claude/settings.local.json" beforeDir="false" afterPath="$PROJECT_DIR$/.claude/settings.local.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hardware/device-tree/BB-I2S-MIC-00A0.dtbo" beforeDir="false" afterPath="$PROJECT_DIR$/hardware/device-tree/BB-I2S-MIC-00A0.dtbo" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/hardware/device-tree/BB-I2S-MIC-00A0.dts" beforeDir="false" afterPath="$PROJECT_DIR$/hardware/device-tree/BB-I2S-MIC-00A0.dts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/patches/0002-davinci-mcasp-add-debug-logging.patch" beforeDir="false" afterPath="$PROJECT_DIR$/patches/0002-davinci-mcasp-add-debug-logging.patch" afterDir="false" />
-    </list>
+    <list default="true" id="09c257aa-1b05-4518-92b7-4c7384df7ebc" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
