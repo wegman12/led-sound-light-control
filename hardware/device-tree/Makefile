@@ -1,10 +1,12 @@
 # Device Tree Overlay Makefile
-# Compiles and deploys I2S microphone overlay to BeagleBone Black
+# Compiles and deploys device tree overlays to BeagleBone Black
 
 DTC := dtc
-OVERLAY := BB-I2S-MIC-00A0
-DTS_FILE := $(OVERLAY).dts
-DTBO_FILE := $(OVERLAY).dtbo
+
+# Overlays to build
+OVERLAYS := BB-I2S-MIC-00A0 BB-PRU-IR-00A0 BB-PWM-00A0 BB-PWM-PINS-00A0
+DTS_FILES := $(addsuffix .dts, $(OVERLAYS))
+DTBO_FILES := $(addsuffix .dtbo, $(OVERLAYS))
 
 # Deployment settings
 DEPLOY_HOST ?= bbb2.wegman
@@ -22,49 +24,58 @@ KERNEL_DIR_REMOTE := ~/repositories/external/linux_kernel/beagleboard
 
 all: compile-remote
 
-# Compile device tree overlay locally (requires dtc installed)
-compile: $(DTBO_FILE)
+# Compile device tree overlays locally (requires dtc installed)
+compile: $(DTBO_FILES)
 
-$(DTBO_FILE): $(DTS_FILE)
-	@echo "Compiling device tree overlay: $(DTS_FILE) -> $(DTBO_FILE)"
-	$(DTC) -O dtb -o $(DTBO_FILE) -b 0 -@ $(DTS_FILE)
-	@echo "✓ Compilation complete"
+%.dtbo: %.dts
+	@echo "Compiling device tree overlay: $< -> $@"
+	$(DTC) -O dtb -o $@ -b 0 -@ $<
+	@echo "✓ Compilation complete: $@"
 
-# Compile device tree overlay on remote BeagleBone (recommended)
+# Compile device tree overlays on remote BeagleBone (recommended)
 compile-remote:
-	@echo "Compiling on $(DEPLOY_HOST)..."
-	scp $(DTS_FILE) $(DEPLOY_HOST):~/
-	ssh $(DEPLOY_HOST) "dtc -O dtb -o ~/$(DTBO_FILE) -b 0 -@ ~/$(DTS_FILE)"
-	scp $(DEPLOY_HOST):~/$(DTBO_FILE) ./
+	@echo "Compiling $(words $(OVERLAYS)) overlays on $(DEPLOY_HOST)..."
+	@for overlay in $(OVERLAYS); do \
+		echo "  - Compiling $$overlay..."; \
+		scp $$overlay.dts $(DEPLOY_HOST):~/ && \
+		ssh $(DEPLOY_HOST) "dtc -O dtb -o ~/$$overlay.dtbo -b 0 -@ ~/$$overlay.dts" && \
+		scp $(DEPLOY_HOST):~/$$overlay.dtbo ./ || exit 1; \
+	done
 	@echo "✓ Remote compilation complete"
 
 # Install locally (run on BeagleBone)
-install: $(DTBO_FILE)
-	@echo "Installing overlay to $(FIRMWARE_DIR)..."
-	sudo cp $(DTBO_FILE) $(FIRMWARE_DIR)/
-	@echo "✓ Overlay installed"
+install: $(DTBO_FILES)
+	@echo "Installing overlays to $(FIRMWARE_DIR)..."
+	@for dtbo in $(DTBO_FILES); do \
+		echo "  - $$dtbo"; \
+		sudo cp $$dtbo $(FIRMWARE_DIR)/; \
+	done
+	@echo "✓ Overlays installed"
 	@echo ""
-	@echo "To load the overlay:"
-	@echo "  sudo sh -c \"echo '$(OVERLAY)' > /sys/devices/platform/bone_capemgr/slots\""
-	@echo ""
-	@echo "To load automatically on boot, add to /boot/uEnv.txt:"
-	@echo "  uboot_overlay_addr4=/lib/firmware/$(DTBO_FILE)"
+	@echo "To load overlays automatically on boot, add to /boot/uEnv.txt:"
+	@echo "  uboot_overlay_addr4=BB-I2S-MIC-00A0.dtbo"
+	@echo "  uboot_overlay_addr5=BB-PRU-IR-00A0.dtbo"
+	@echo "  uboot_overlay_addr6=BB-PWM-00A0.dtbo"
+	@echo "  uboot_overlay_addr7=BB-PWM-PINS-00A0.dtbo"
 
-# Deploy compiled overlay to remote BeagleBone (requires local .dtbo file)
+# Deploy compiled overlays to remote BeagleBone (requires local .dtbo files)
 deploy:
-	@echo "Deploying to $(DEPLOY_HOST)..."
-	@if [ ! -f $(DTBO_FILE) ]; then \
-		echo "Error: $(DTBO_FILE) not found. Run 'make compile-remote' first."; \
-		exit 1; \
-	fi
-	scp $(DTBO_FILE) $(DEPLOY_HOST):/tmp/
-	ssh $(DEPLOY_HOST) "sudo cp /tmp/$(DTBO_FILE) $(FIRMWARE_DIR)/"
-	ssh $(DEPLOY_HOST) "sudo cp /tmp/$(DTBO_FILE) $(OVERLAY_PATH)"
+	@echo "Deploying $(words $(DTBO_FILES)) overlays to $(DEPLOY_HOST)..."
+	@for dtbo in $(DTBO_FILES); do \
+		if [ ! -f $$dtbo ]; then \
+			echo "Error: $$dtbo not found. Run 'make compile-remote' first."; \
+			exit 1; \
+		fi; \
+	done
+	@for dtbo in $(DTBO_FILES); do \
+		echo "  - Deploying $$dtbo..."; \
+		scp $$dtbo $(DEPLOY_HOST):/tmp/ && \
+		ssh $(DEPLOY_HOST) "sudo cp /tmp/$$dtbo $(FIRMWARE_DIR)/" && \
+		ssh $(DEPLOY_HOST) "sudo cp /tmp/$$dtbo $(OVERLAY_PATH)" || exit 1; \
+	done
 	@echo "✓ Deployed to $(DEPLOY_HOST)"
-	@echo "  - $(FIRMWARE_DIR)/$(DTBO_FILE)"
-	@echo "  - $(OVERLAY_PATH)$(DTBO_FILE)"
 	@echo ""
-	@echo "Overlay will load automatically on next boot via uEnv.txt"
+	@echo "Overlays will load automatically on next boot via uEnv.txt"
 	@echo "To reboot: ssh $(DEPLOY_HOST) 'sudo reboot'"
 
 # Compile and deploy in one step (recommended)

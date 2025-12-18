@@ -1,0 +1,38 @@
+/*
+ * PWM Pin Mux Only Overlay
+ * Configures pins for PWM without touching EPWMSS/EHRPWM devices
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,beaglebone-green";
+
+    part-number = "BB-PWM-PINS";
+    version = "00A0";
+
+    /* Pin mux configuration only */
+    fragment@0 {
+        target = <&am33xx_pinmux>;
+        __overlay__ {
+            pwm_pins: pinmux_pwm_pins {
+                pinctrl-single,pins = <
+                    0x048 0x06  // P9_14: ehrpwm1a (Mode 6, OUTPUT)
+                    0x04c 0x06  // P9_16: ehrpwm1b (Mode 6, OUTPUT)
+                    0x020 0x04  // P8_19: ehrpwm2a (Mode 4, OUTPUT)
+                    0x024 0x04  // P8_13: ehrpwm2b (Mode 4, OUTPUT)
+                >;
+            };
+        };
+    };
+
+    /* Apply pinmux to ehrpwm1 */
+    fragment@1 {
+        target = <&ehrpwm1>;
+        __overlay__ {
+            pinctrl-names = "default";
+            pinctrl-0 = <&pwm_pins>;
+        };
+    };
+};

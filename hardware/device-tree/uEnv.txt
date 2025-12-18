@@ -18,9 +18,9 @@ enable_uboot_overlays=1
 ###Additional custom capes
 #uboot_overlay_addr4=custom-pins.dtbo
 uboot_overlay_addr4=BB-I2S-MIC-00A0.dtbo
-uboot_overlay_addr5=AM335X-PRU-RPROC-PRUCAPE-00A0.dtbo  # Re-enabled - HDMI audio was the conflict
-#uboot_overlay_addr6=<file6>.dtbo
-#uboot_overlay_addr7=<file7>.dtbo
+uboot_overlay_addr5=BB-PRU-IR-00A0.dtbo
+uboot_overlay_addr6=BB-PWM-00A0.dtbo
+uboot_overlay_addr7=BB-PWM-PINS-00A0.dtbo
 ###
 ###Custom Cape
 #dtb_overlay=<file8>.dtbo
@@ -33,7 +33,7 @@ disable_uboot_overlay_audio=1  # Disable HDMI audio to free McASP0 for I2S micro
 #disable_uboot_overlay_adc=1
 ###
 ###Cape Universal Enable
-enable_uboot_cape_universal=1  # Re-enabled (HDMI audio was the real conflict)
+#enable_uboot_cape_universal=1  # Disabled - using explicit overlays for I2S, PRU, and PWM
 ###
 ###Debug: disable uboot autoload of Cape
 #disable_uboot_overlay_addr0=1

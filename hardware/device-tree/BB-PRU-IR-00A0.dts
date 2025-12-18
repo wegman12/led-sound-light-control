@@ -1,0 +1,50 @@
+/*
+ * Device Tree Overlay for PRU IR Remote Detection
+ * BeagleBone Black - PRU0 Configuration
+ *
+ * Hardware Required:
+ *   - IR receiver connected to P9_27
+ *
+ * Pins used:
+ *   P9_27 - PRU0 R31 bit 5 (IR input from receiver)
+ *
+ * This overlay only configures the pin mux for PRU input.
+ * The PRU remoteproc subsystem is already enabled in the kernel.
+ *
+ * To use:
+ *   1. Load this overlay in /boot/uEnv.txt
+ *   2. Deploy PRU firmware to /lib/firmware/am335x-pru0-fw
+ *   3. Start PRU: echo 'start' > /sys/class/remoteproc/remoteproc1/state
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,beaglebone-green";
+
+    /* Identification */
+    part-number = "BB-PRU-IR";
+    version = "00A0";
+
+    /* Pin mux configuration */
+    fragment@0 {
+        target = <&am33xx_pinmux>;
+        __overlay__ {
+            pru_ir_pins: pinmux_pru_ir_pins {
+                pinctrl-single,pins = <
+                    0x1a4 0x26  // P9_27: pru0_pru_r31_5 (Mode 5, INPUT | PULLDOWN)
+                >;
+            };
+        };
+    };
+
+    /* PRU configuration - just pinctrl, no exclusive claim */
+    fragment@1 {
+        target = <&pruss>;
+        __overlay__ {
+            pinctrl-names = "default";
+            pinctrl-0 = <&pru_ir_pins>;
+        };
+    };
+};
