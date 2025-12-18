@@ -14,7 +14,8 @@
       "Bash(done)",
       "Bash(make deploy-full:*)",
       "Bash(for i in {1..15})",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
