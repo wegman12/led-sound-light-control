@@ -50,6 +50,7 @@
             clock-names = "fck";
             assigned-clocks = <&mcasp0_fck>;
             assigned-clock-parents = <&sys_clkin_ck>;
+            ti,mcasp-auxclk-mode = "out";
 
             op-mode = <0>;  /* MCASP_IIS_MODE */
             tdm-slots = <2>;
