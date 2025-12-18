@@ -50,7 +50,7 @@
             i2s_pins: pinmux_i2s_pins {
                 pinctrl-single,pins = <
                     0x1ac 0x03  // P9_25: clkout2 (Mode 3, OUTPUT) - 24.576 MHz clock out
-                    0x19c 0x22  // P9_28: mcasp0_ahclkr (Mode 2, INPUT | PULLDOWN) - Clock input to McASP
+                    0x19c 0x20  // P9_28: mcasp0_ahclkr (Mode 0, INPUT | PULLDOWN) - Clock input to McASP
                     0x198 0x20  // P9_30: mcasp0_axr0 (Mode 0, INPUT | PULLDOWN) - Data from mic
                     0x194 0x00  // P9_29: mcasp0_fsx (Mode 0, OUTPUT | PULLDOWN) - Frame sync clock
                     0x190 0x00  // P9_31: mcasp0_aclkx (Mode 0, OUTPUT | PULLDOWN) - Bit clock

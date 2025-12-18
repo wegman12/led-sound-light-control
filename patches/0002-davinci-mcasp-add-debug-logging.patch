@@ -1,117 +1,23 @@
 diff --git a/sound/soc/ti/davinci-mcasp.c b/sound/soc/ti/davinci-mcasp.c
-index f8ee5d829a61..d19830b0975b 100644
+index f8ee5d829a61..1bec49fe61b6 100644
 --- a/sound/soc/ti/davinci-mcasp.c
 +++ b/sound/soc/ti/davinci-mcasp.c
-@@ -186,12 +186,21 @@ static inline void mcasp_set_clk_pdir(struct davinci_mcasp *mcasp, bool enable)
- {
- 	u32 bit = PIN_BIT_AMUTE;
- 
-+	dev_info(mcasp->dev, "DEBUG: mcasp_set_clk_pdir enable=%d bclk_master=%d ACLKXCTL(before)=0x%08x\n",
-+		 enable, mcasp->bclk_master, mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG));
-+
- 	for_each_set_bit_from(bit, &mcasp->pdir, PIN_BIT_AFSR + 1) {
- 		if (enable)
- 			mcasp_set_bits(mcasp, DAVINCI_MCASP_PDIR_REG, BIT(bit));
- 		else
- 			mcasp_clr_bits(mcasp, DAVINCI_MCASP_PDIR_REG, BIT(bit));
- 	}
-+
-+	/* Don't enable clocks here - will do it after state machines are released */
-+
-+	dev_info(mcasp->dev, "DEBUG: mcasp_set_clk_pdir PDIR=0x%08x ACLKXCTL(after)=0x%08x\n",
-+		 mcasp_get_reg(mcasp, DAVINCI_MCASP_PDIR_REG),
-+		 mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG));
- }
- 
- static inline void mcasp_set_axr_pdir(struct davinci_mcasp *mcasp, bool enable)
-@@ -208,6 +217,7 @@ static inline void mcasp_set_axr_pdir(struct davinci_mcasp *mcasp, bool enable)
- 
- static void mcasp_start_rx(struct davinci_mcasp *mcasp)
- {
-+	dev_info(mcasp->dev, "DEBUG: mcasp_start_rx called, is_sync=%d\n", mcasp_is_synchronous(mcasp));
- 	if (mcasp->rxnumevt) {	/* enable FIFO */
- 		u32 reg = mcasp->fifo_base + MCASP_RFIFOCTL_OFFSET;
- 
-@@ -216,18 +226,27 @@ static void mcasp_start_rx(struct davinci_mcasp *mcasp)
- 	}
- 
- 	/* Start clocks */
-+	dev_info(mcasp->dev, "DEBUG: Before RXHCLKRST - ACLKXCTL=0x%08x\n", mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG));
- 	mcasp_set_ctl_reg(mcasp, DAVINCI_MCASP_GBLCTLR_REG, RXHCLKRST);
-+	dev_info(mcasp->dev, "DEBUG: After RXHCLKRST - ACLKXCTL=0x%08x\n", mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG));
- 	mcasp_set_ctl_reg(mcasp, DAVINCI_MCASP_GBLCTLR_REG, RXCLKRST);
-+	dev_info(mcasp->dev, "DEBUG: After RXCLKRST - ACLKXCTL=0x%08x\n", mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG));
- 	/*
- 	 * When ASYNC == 0 the transmit and receive sections operate
- 	 * synchronously from the transmit clock and frame sync. We need to make
- 	 * sure that the TX signlas are enabled when starting reception.
- 	 */
- 	if (mcasp_is_synchronous(mcasp)) {
-+		dev_info(mcasp->dev, "DEBUG: Before TXHCLKRST - ACLKXCTL=0x%08x\n", mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG));
- 		mcasp_set_ctl_reg(mcasp, DAVINCI_MCASP_GBLCTLX_REG, TXHCLKRST);
-+		dev_info(mcasp->dev, "DEBUG: After TXHCLKRST - ACLKXCTL=0x%08x\n", mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG));
- 		mcasp_set_ctl_reg(mcasp, DAVINCI_MCASP_GBLCTLX_REG, TXCLKRST);
-+		dev_info(mcasp->dev, "DEBUG: After TXCLKRST - ACLKXCTL=0x%08x\n", mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG));
- 		mcasp_set_clk_pdir(mcasp, true);
- 	}
-+	dev_info(mcasp->dev, "DEBUG: mcasp_start_rx done, final PDIR=0x%08x ACLKXCTL=0x%08x\n",
-+		 mcasp_get_reg(mcasp, DAVINCI_MCASP_PDIR_REG),
-+		 mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG));
- 
- 	/* Activate serializer(s) */
- 	mcasp_set_reg(mcasp, DAVINCI_MCASP_RXSTAT_REG, 0xFFFFFFFF);
-@@ -239,6 +258,22 @@ static void mcasp_start_rx(struct davinci_mcasp *mcasp)
+@@ -239,6 +239,18 @@ static void mcasp_start_rx(struct davinci_mcasp *mcasp)
  	if (mcasp_is_synchronous(mcasp))
  		mcasp_set_ctl_reg(mcasp, DAVINCI_MCASP_GBLCTLX_REG, TXFSRST);
  
 +	/*
-+	 * Re-enable clock generation after all state machines are released.
-+	 * Writing to PDIR clears clock control registers, so we must set them here.
++	 * CRITICAL FIX: Re-enable AHCLK after clock reset sequence.
++	 * Hardware clears AHCLKXE/AHCLKRE bits when releasing clock dividers
++	 * from reset (TXCLKRST/RXCLKRST). Must re-enable them here.
++	 * Without this, external clock on AHCLKR is not received.
 +	 */
 +	if (mcasp->bclk_master) {
-+		dev_info(mcasp->dev, "DEBUG: Final clock enable - ACLKXCTL before=0x%08x\n",
-+			 mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG));
-+		mcasp_set_bits(mcasp, DAVINCI_MCASP_ACLKXCTL_REG, ACLKXE);
-+		mcasp_set_bits(mcasp, DAVINCI_MCASP_ACLKRCTL_REG, ACLKRE);
-+		mcasp_set_bits(mcasp, DAVINCI_MCASP_TXFMCTL_REG, AFSXE);
-+		mcasp_set_bits(mcasp, DAVINCI_MCASP_RXFMCTL_REG, AFSRE);
-+		dev_info(mcasp->dev, "DEBUG: Final clock enable - ACLKXCTL after=0x%08x PDIR=0x%08x\n",
-+			 mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG),
-+			 mcasp_get_reg(mcasp, DAVINCI_MCASP_PDIR_REG));
++		dev_info(mcasp->dev, "Re-enabling AHCLK after reset (fix for hardware clearing bits)\n");
++		mcasp_set_bits(mcasp, DAVINCI_MCASP_AHCLKXCTL_REG, AHCLKXE);
++		mcasp_set_bits(mcasp, DAVINCI_MCASP_AHCLKRCTL_REG, AHCLKRE);
 +	}
 +
  	/* enable receive IRQs */
  	mcasp_set_bits(mcasp, DAVINCI_MCASP_EVTCTLR_REG,
  		       mcasp->irq_request[SNDRV_PCM_STREAM_CAPTURE]);
-@@ -445,6 +480,10 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
- 	if (!fmt)
- 		return 0;
- 
-+	dev_info(mcasp->dev, "DEBUG: set_dai_fmt fmt=0x%08x FORMAT=0x%x MASTER=0x%x\n",
-+		 fmt, fmt & SND_SOC_DAIFMT_FORMAT_MASK,
-+		 fmt & SND_SOC_DAIFMT_MASTER_MASK);
-+
- 	pm_runtime_get_sync(mcasp->dev);
- 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
- 	case SND_SOC_DAIFMT_DSP_A:
-@@ -490,6 +529,10 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
- 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
- 	case SND_SOC_DAIFMT_CBS_CFS:
- 		/* codec is clock and frame slave */
-+		dev_info(mcasp->dev, "DEBUG: Setting CBS_CFS (CPU is master)\n");
-+		dev_info(mcasp->dev, "DEBUG: Before set - ACLKXCTL=0x%08x TXFMCTL=0x%08x PDIR=0x%08x\n",
-+			 mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG),
-+			 mcasp_get_reg(mcasp, DAVINCI_MCASP_TXFMCTL_REG), mcasp_get_reg(mcasp, DAVINCI_MCASP_PDIR_REG));
- 		mcasp_set_bits(mcasp, DAVINCI_MCASP_ACLKXCTL_REG, ACLKXE);
- 		mcasp_set_bits(mcasp, DAVINCI_MCASP_TXFMCTL_REG, AFSXE);
- 
-@@ -504,6 +547,9 @@ static int davinci_mcasp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
- 		set_bit(PIN_BIT_AFSR, &mcasp->pdir);
- 
- 		mcasp->bclk_master = 1;
-+		dev_info(mcasp->dev, "DEBUG: After set - ACLKXCTL=0x%08x TXFMCTL=0x%08x pdir=0x%lx PDIR=0x%08x\n",
-+			 mcasp_get_reg(mcasp, DAVINCI_MCASP_ACLKXCTL_REG),
-+			 mcasp_get_reg(mcasp, DAVINCI_MCASP_TXFMCTL_REG), mcasp->pdir, mcasp_get_reg(mcasp, DAVINCI_MCASP_PDIR_REG));
- 		break;
- 	case SND_SOC_DAIFMT_CBS_CFM:
- 		/* codec is clock slave and frame master */
