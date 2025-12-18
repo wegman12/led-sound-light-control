@@ -90,8 +90,29 @@
         };
     };
 
-    /* Audio card configuration */
+    /* Clock configuration for 24.576 MHz oscillator */
     fragment@2 {
+        target-path = "/";
+        __overlay__ {
+            /* Fixed clock representing the 24.576 MHz HDMI oscillator */
+            mcasp0_ahclkr_fixed: mcasp0_ahclkr_fixed {
+                compatible = "fixed-clock";
+                clock-frequency = <24576000>;
+                #clock-cells = <0>;
+            };
+
+            /* GPIO-gated clock controlled by GPIO1_27 (enables oscillator) */
+            clk_mcasp0_ahclkr: clk_mcasp0_ahclkr {
+                #clock-cells = <0>;
+                compatible = "gpio-gate-clock";
+                clocks = <&mcasp0_ahclkr_fixed>;
+                enable-gpios = <&gpio1 27 0>;  /* GPIO1_27 controls 24.576 MHz oscillator */
+            };
+        };
+    };
+
+    /* Audio card configuration */
+    fragment@3 {
         target-path = "/";
         __overlay__ {
             sound {
@@ -103,8 +124,9 @@
 
                 cpu_master: simple-audio-card,cpu {
                     sound-dai = <&mcasp0>;
-                    /* Use 24.576 MHz from CLKOUT2 via AHCLKR */
+                    /* Use 24.576 MHz from oscillator via AHCLKR */
                     system-clock-frequency = <24576000>;
+                    clocks = <&clk_mcasp0_ahclkr>;
                 };
 
                 simple-audio-card,codec {
