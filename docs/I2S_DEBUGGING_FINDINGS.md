@@ -2,7 +2,7 @@
 
 ## Summary
 
-After extensive kernel-level debugging, we discovered that **writing to the PDIR (pin direction) register clears the ACLKXCTL and related clock control registers** on the TI AM335x McASP hardware. This appears to be undocumented hardware behavior that prevents proper clock generation in master mode.
+After extensive kernel-level debugging, we discovered that **releasing clock dividers from reset (via GBLCTL register) clears bits 19-20 in both AHCLKXCTL and ACLKXCTL registers** on the TI AM335x McASP hardware. This appears to be undocumented hardware behavior that prevents proper clock generation in master mode when using internal clock sources.
 
 ## Current Status
 
@@ -18,15 +18,25 @@ After extensive kernel-level debugging, we discovered that **writing to the PDIR
 
 ### Hardware Behavior Discovered
 
-When the driver writes to the PDIR register to configure pins as outputs during `mcasp_start_rx()`:
+When the driver releases clock dividers from reset during `mcasp_start_rx()`:
 
-1. ACLKXCTL register value **before** PDIR write: `0x001800a0` (clock enabled, divider configured)
-2. Driver writes to PDIR: `0xbc000000` (pins 26,27,28,29,31 as outputs)
-3. ACLKXCTL register value **after** PDIR write: `0x000000a3` (upper bits cleared!)
+**Initial state (clocks in reset, GBLCTLX=0x00000000):**
+1. AHCLKXCTL = `0x00188000` (high-frequency clock control, bits 19-20 set)
+2. ACLKXCTL = `0x001800a3` (bit clock control, bits 19-20 set)
+3. PDIR = `0xbc000000` (pins configured as outputs)
 
-The cleared bits in ACLKXCTL include:
-- Bits 16-20: Clock divider configuration
-- These bits are set earlier by `__davinci_mcasp_set_clkdiv()`
+**After releasing clocks (GBLCTLX=0x00000303, all clock resets released):**
+1. AHCLKXCTL = `0x00008000` (bits 19-20 **cleared**)
+2. ACLKXCTL = `0x000000a3` (bits 19-20 **cleared**)
+3. PDIR = `0xbc000000` (unchanged)
+
+**Key Finding:** Writing PDIR does NOT clear the registers. Instead, setting TXCLKRST and RXCLKRST bits in GBLCTL (releasing clock dividers from reset) causes the hardware to clear bits 19-20 in BOTH clock control registers.
+
+These cleared bits (0x00180000):
+- Appear in both AHCLKXCTL and ACLKXCTL at the same bit positions
+- Are cleared simultaneously when clocks are released from reset
+- May indicate transient configuration only valid during initialization
+- Likely related to internal vs external clock source selection
 
 ### Register Read Results (During Active Capture)
 
