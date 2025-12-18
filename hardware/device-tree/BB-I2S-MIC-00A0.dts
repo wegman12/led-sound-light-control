@@ -1,6 +1,6 @@
 /*
  * Device Tree Overlay for INMP441 I2S MEMS Microphone
- * BeagleBone Black - McASP0 Configuration with INTERNAL Clock (DPLL_PER)
+ * BeagleBone Black - McASP0 Configuration with DYNAMIC Clock Control
  *
  * Hardware Required:
  *   - INMP441 I2S MEMS Microphone
@@ -11,14 +11,19 @@
  *   P9_31 - McASP0_ACLKX  (I2S Bit Clock OUTPUT to mic)
  *
  * Clock Strategy:
- *   This overlay tests using AM335x internal DPLL_PER_M2 to generate audio clocks
- *   instead of requiring an external 24.576 MHz oscillator.
+ *   This overlay uses the MODIFIED davinci-mcasp driver that calls clk_set_rate()
+ *   to dynamically program DPLL_PER_M2 to the optimal frequency for audio.
  *
- *   Using fck_parent property to reparent mcasp0_fck to dpll_per_m2_ck (~192 MHz)
- *   McASP divides 192 MHz by 62.5 → 3.072 MHz BCLK
- *   BCLK / 64 → 48 kHz sample rate
+ *   Driver behavior:
+ *   1. Calculates required BCLK (e.g., 48kHz * 64 = 3.072 MHz)
+ *   2. Calculates optimal system clock (BCLK * 32 = 98.304 MHz)
+ *   3. Calls clk_set_rate() to program DPLL_PER_M2
+ *   4. Reads back actual achieved rate
+ *   5. Calculates McASP dividers from actual rate
  *
- * Sample rate: 48000 Hz
+ *   No fixed system-clock-frequency needed - driver sets it dynamically!
+ *
+ * Sample rate: 48000 Hz (or any rate - driver adapts automatically)
  * Format: I2S
  * Channels: 1 (Mono - left channel)
  */
@@ -91,8 +96,7 @@
 
                 cpu_master: simple-audio-card,cpu {
                     sound-dai = <&mcasp0>;
-                    /* Using default 24 MHz mcasp0_fck for now */
-                    system-clock-frequency = <24000000>;
+                    /* No system-clock-frequency specified - driver sets dynamically */
                 };
 
                 simple-audio-card,codec {
