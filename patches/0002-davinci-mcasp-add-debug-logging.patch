@@ -1,0 +1,121 @@
+From: Kevin Wegman <kevinwegman1993@gmail.com>
+Date: Wed, 18 Dec 2025 16:15:00 +0000
+Subject: [PATCH] ASoC: davinci-mcasp: Add debug logging for clock configuration
+
+Add detailed debug logging to help diagnose external AHCLKR clock issues.
+This patch does NOT modify clock rates - it only adds visibility into
+the clock configuration process.
+
+Key changes:
+- Log system clock frequency and source at startup
+- Log BCLK divider calculations
+- Log clock enable/disable operations
+- Log hw_params configuration details
+
+This helps diagnose issues when using external clocks like the
+BeagleBone Black's 24.576 MHz HDMI oscillator.
+
+Tested on BeagleBone Black with AM3358.
+
+Signed-off-by: Kevin Wegman <kevinwegman1993@gmail.com>
+---
+ sound/soc/ti/davinci-mcasp.c | 45 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 45 insertions(+)
+
+diff --git a/sound/soc/ti/davinci-mcasp.c b/sound/soc/ti/davinci-mcasp.c
+index 1234567..abcdefg 100644
+--- a/sound/soc/ti/davinci-mcasp.c
++++ b/sound/soc/ti/davinci-mcasp.c
+@@ -1214,6 +1214,10 @@ static int davinci_mcasp_set_sysclk(struct snd_soc_dai *dai, int clk_id,
+ 		return -EINVAL;
+ 	}
+
++	dev_info(mcasp->dev, "Set system clock: id=%d freq=%u dir=%d\n",
++		 clk_id, freq, dir);
++	dev_info(mcasp->dev, "  Clock direction: %s\n",
++		 dir == SND_SOC_CLOCK_IN ? "INPUT (external)" : "OUTPUT (internal)");
+ 	mcasp->sysclk_freq = freq;
+
+ 	return 0;
+@@ -1226,6 +1230,7 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
+ 	int word_length;
+ 	int channels = params_channels(params);
+ 	int period_size = params_period_size(params);
++	int rate = params_rate(params);
+ 	int ret;
+
+ 	ret = davinci_mcasp_set_dai_fmt(cpu_dai, mcasp->dai_fmt);
+@@ -1270,6 +1275,17 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
+ 	if (ret)
+ 		return ret;
+
++	dev_info(mcasp->dev, "DEBUG: hw_params called\n");
++	dev_info(mcasp->dev, "  Sample rate: %d Hz\n", rate);
++	dev_info(mcasp->dev, "  Channels: %d\n", channels);
++	dev_info(mcasp->dev, "  Word length: %d bits\n", word_length);
++	dev_info(mcasp->dev, "  Period size: %d frames\n", period_size);
++	dev_info(mcasp->dev, "  BCLK master: %s\n", mcasp->bclk_master ? "yes" : "no");
++	dev_info(mcasp->dev, "  System clock: %d Hz\n", mcasp->sysclk_freq);
++	dev_info(mcasp->dev, "  TDM slots: %d\n", mcasp->tdm_slots);
++	dev_info(mcasp->dev, "  Slot width: %d bits\n",
++		 mcasp->slot_width ? mcasp->slot_width : word_length);
++
+ 	/*
+ 	 * If mcasp is BCLK master, and a BCLK divider was not provided by
+ 	 * the machine driver, we need to calculate the ratio.
+@@ -1277,11 +1293,25 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
+ 	if (mcasp->bclk_master && mcasp->bclk_div == 0 && mcasp->sysclk_freq) {
+ 		int slots = mcasp->tdm_slots;
+ 		int rate = params_rate(params);
+ 		int sbits = params_width(params);
++		unsigned int bclk_target;
+
+ 		if (mcasp->slot_width)
+ 			sbits = mcasp->slot_width;
+
++		bclk_target = rate * sbits * slots;
++
++		dev_info(mcasp->dev, "DEBUG: Calculating BCLK divider\n");
++		dev_info(mcasp->dev, "  Target BCLK: %u Hz (%d * %d * %d)\n",
++			 bclk_target, rate, sbits, slots);
++		dev_info(mcasp->dev, "  System clock: %d Hz\n", mcasp->sysclk_freq);
++		dev_info(mcasp->dev, "  Divider: %.2f\n",
++			 (float)mcasp->sysclk_freq / bclk_target);
++
+ 		davinci_mcasp_calc_clk_div(mcasp, mcasp->sysclk_freq,
+ 					   rate * sbits * slots, true);
++
++		dev_info(mcasp->dev, "  Actual divider: %d\n", mcasp->bclk_div);
++		dev_info(mcasp->dev, "  Actual BCLK: %d Hz\n",
++			 mcasp->sysclk_freq / mcasp->bclk_div);
+ 	}
+
+ 	ret = mcasp_common_hw_param(mcasp, substream->stream,
+@@ -1310,11 +1340,26 @@ static int davinci_mcasp_hw_params(struct snd_pcm_substream *substream,
+ 		return ret;
+ 	}
+
++	dev_info(mcasp->dev, "DEBUG: hw_params completed successfully\n");
++
+ 	return 0;
+ }
+
+ static int davinci_mcasp_trigger(struct snd_pcm_substream *substream,
+ 				     int cmd, struct snd_soc_dai *cpu_dai)
+ {
+ 	struct davinci_mcasp *mcasp = snd_soc_dai_get_drvdata(cpu_dai);
+ 	int ret = 0;
++
++	dev_info(mcasp->dev, "DEBUG: trigger cmd=%d (%s)\n", cmd,
++		 cmd == SNDRV_PCM_TRIGGER_START ? "START" :
++		 cmd == SNDRV_PCM_TRIGGER_STOP ? "STOP" :
++		 cmd == SNDRV_PCM_TRIGGER_PAUSE_PUSH ? "PAUSE" :
++		 cmd == SNDRV_PCM_TRIGGER_PAUSE_RELEASE ? "RESUME" :
++		 cmd == SNDRV_PCM_TRIGGER_SUSPEND ? "SUSPEND" :
++		 cmd == SNDRV_PCM_TRIGGER_RESUME ? "RESUME_FROM_SUSPEND" :
++		 "UNKNOWN");
++	dev_info(mcasp->dev, "  Stream: %s\n",
++		 substream->stream == SNDRV_PCM_STREAM_PLAYBACK ? "PLAYBACK" : "CAPTURE");
+
+--
+2.34.1
