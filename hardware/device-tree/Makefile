@@ -16,6 +16,7 @@ OVERLAY_PATH := /boot/dtbs/$(KERNEL_VERSION)/overlays/
 # Driver settings
 KERNEL_DRIVER_PATCH := ../../patches/0002-davinci-mcasp-add-debug-logging.patch
 BUILD_DIR_REMOTE := ~/mcasp-debug-build
+KERNEL_DIR_REMOTE := ~/repositories/external/linux_kernel/beagleboard
 
 .PHONY: all compile compile-remote install deploy deploy-full deploy-uenv deploy-driver deploy-all clean help
 
@@ -106,24 +107,25 @@ deploy-driver:
 	scp $(KERNEL_DRIVER_PATCH) $(DEPLOY_HOST):/tmp/mcasp-debug.patch
 	@echo "[2/8] Creating build directory..."
 	ssh $(DEPLOY_HOST) "mkdir -p $(BUILD_DIR_REMOTE)"
-	@echo "[3/8] Getting stock driver C source from kernel package..."
-	ssh $(DEPLOY_HOST) "cd ~ && apt-get source linux-image-\$$(uname -r) 2>&1 | head -5 && \
-		find ~/linux-* -name davinci-mcasp.c -exec cp {} $(BUILD_DIR_REMOTE)/ \; && \
-		ls -lh $(BUILD_DIR_REMOTE)/davinci-mcasp.c"
+	@echo "[3/8] Copying stock driver source and headers from local kernel tree..."
+	@# First reset the local kernel source to ensure we have stock driver
+	cd $(KERNEL_DIR_REMOTE) && git checkout sound/soc/ti/davinci-mcasp.c
+	@# Create directory structure and copy stock driver and headers
+	ssh $(DEPLOY_HOST) "mkdir -p $(BUILD_DIR_REMOTE)/sound/soc/ti"
+	scp $(KERNEL_DIR_REMOTE)/sound/soc/ti/davinci-mcasp.c $(DEPLOY_HOST):$(BUILD_DIR_REMOTE)/sound/soc/ti/
+	scp $(KERNEL_DIR_REMOTE)/sound/soc/ti/*.h $(DEPLOY_HOST):$(BUILD_DIR_REMOTE)/sound/soc/ti/
+	ssh $(DEPLOY_HOST) "ls -lh $(BUILD_DIR_REMOTE)/sound/soc/ti/ | head -10"
 	@echo "[4/8] Applying debug patch..."
 	ssh $(DEPLOY_HOST) "cd $(BUILD_DIR_REMOTE) && \
-		patch -p4 < /tmp/mcasp-debug.patch && \
+		patch -p1 < /tmp/mcasp-debug.patch && \
 		echo 'Patch applied successfully'"
 	@echo "[5/8] Creating module Makefile..."
-	@ssh $(DEPLOY_HOST) 'cat > $(BUILD_DIR_REMOTE)/Makefile << "EOF" \n\
-obj-m += snd-soc-davinci-mcasp.o\n\
-snd-soc-davinci-mcasp-objs := davinci-mcasp.o\n\
-KDIR := /lib/modules/$$(shell uname -r)/build\n\
-all:\n\
-	make -C $$(KDIR) M=$$(PWD) modules\n\
-clean:\n\
-	make -C $$(KDIR) M=$$(PWD) clean\n\
-EOF'
+	@ssh $(DEPLOY_HOST) "cd $(BUILD_DIR_REMOTE) && \
+		printf 'obj-m += snd-soc-davinci-mcasp.o\n' > Makefile && \
+		printf 'snd-soc-davinci-mcasp-objs := sound/soc/ti/davinci-mcasp.o\n\n' >> Makefile && \
+		printf 'KDIR := /lib/modules/\$$(shell uname -r)/build\n\n' >> Makefile && \
+		printf 'all:\n\tmake -C \$$(KDIR) M=\$$(PWD) modules\n\n' >> Makefile && \
+		printf 'clean:\n\tmake -C \$$(KDIR) M=\$$(PWD) clean\n' >> Makefile"
 	@echo "[6/8] Building kernel module..."
 	ssh $(DEPLOY_HOST) "cd $(BUILD_DIR_REMOTE) && make && ls -lh *.ko"
 	@echo "[7/8] Installing kernel module..."
