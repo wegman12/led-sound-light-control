@@ -97,9 +97,11 @@
                 };
             };
 
-            codec: spdif_receiver {
+            codec: dmic_codec {
                 #sound-dai-cells = <0>;
-                compatible = "linux,spdif-dir";
+                compatible = "dmic-codec";
+                num-channels = <1>;
+                wakeup-delay-ms = <50>;
                 status = "okay";
             };
         };
