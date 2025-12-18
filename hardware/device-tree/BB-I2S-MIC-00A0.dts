@@ -49,7 +49,7 @@
         __overlay__ {
             i2s_pins: pinmux_i2s_pins {
                 pinctrl-single,pins = <
-                    0x1ac 0x03  // P9_25: clkout2 (Mode 3, OUTPUT) - 24.576 MHz clock out
+                    0x1ac 0x07  // P9_25: gpio3[21] (Mode 7, OUTPUT) - 24.576 MHz oscillator output
                     0x19c 0x20  // P9_28: mcasp0_ahclkr (Mode 0, INPUT | PULLDOWN) - Clock input to McASP
                     0x198 0x20  // P9_30: mcasp0_axr0 (Mode 0, INPUT | PULLDOWN) - Data from mic
                     0x194 0x00  // P9_29: mcasp0_fsx (Mode 0, OUTPUT | PULLDOWN) - Frame sync clock
@@ -90,29 +90,8 @@
         };
     };
 
-    /* Clock configuration for 24.576 MHz oscillator */
-    fragment@2 {
-        target-path = "/";
-        __overlay__ {
-            /* Fixed clock representing the 24.576 MHz HDMI oscillator */
-            mcasp0_ahclkr_fixed: mcasp0_ahclkr_fixed {
-                compatible = "fixed-clock";
-                clock-frequency = <24576000>;
-                #clock-cells = <0>;
-            };
-
-            /* GPIO-gated clock controlled by GPIO1_27 (enables oscillator) */
-            clk_mcasp0_ahclkr: clk_mcasp0_ahclkr {
-                #clock-cells = <0>;
-                compatible = "gpio-gate-clock";
-                clocks = <&mcasp0_ahclkr_fixed>;
-                enable-gpios = <&gpio1 27 0>;  /* GPIO1_27 controls 24.576 MHz oscillator */
-            };
-        };
-    };
-
     /* Audio card configuration */
-    fragment@3 {
+    fragment@2 {
         target-path = "/";
         __overlay__ {
             sound {
@@ -124,9 +103,9 @@
 
                 cpu_master: simple-audio-card,cpu {
                     sound-dai = <&mcasp0>;
-                    /* Use 24.576 MHz from oscillator via AHCLKR */
+                    /* Use 24.576 MHz from external oscillator via AHCLKR */
                     system-clock-frequency = <24576000>;
-                    clocks = <&clk_mcasp0_ahclkr>;
+                    system-clock-direction = "in";  /* External clock input on AHCLKR */
                 };
 
                 simple-audio-card,codec {
