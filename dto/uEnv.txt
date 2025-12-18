@@ -29,9 +29,9 @@ uboot_overlay_addr5=AM335X-PRU-RPROC-PRUCAPE-00A0.dtbo
 ###Disable auto loading of virtual capes (emmc/video/wireless/adc)
 #disable_uboot_overlay_emmc=1
 disable_uboot_overlay_video=1
-disable_uboot_overlay_audio=1
+#disable_uboot_overlay_audio=1
 #disable_uboot_overlay_wireless=1
-disable_uboot_overlay_adc=1
+#disable_uboot_overlay_adc=1
 ###
 ###Cape Universal Enable
 enable_uboot_cape_universal=1

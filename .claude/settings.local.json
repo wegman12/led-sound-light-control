@@ -5,7 +5,15 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(go build:*)",
-      "Bash(go test:*)"
+      "Bash(go test:*)",
+      "Bash(scp:*)",
+      "Bash(ssh:*)",
+      "Bash(for i in {1..10})",
+      "Bash(do ssh -o ConnectTimeout=5 bbb2.wegman \"uptime && exit 0\")",
+      "Bash(break)",
+      "Bash(done)",
+      "Bash(make deploy-full:*)",
+      "Bash(for i in {1..15})"
     ],
     "deny": [],
     "ask": []
