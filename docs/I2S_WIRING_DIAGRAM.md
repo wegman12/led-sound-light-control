@@ -1,5 +1,5 @@
 # I2S MEMS Microphone Wiring Diagram
-## INMP441 to BeagleBone Black
+## INMP441/SPH0645 to BeagleBone Black
 
 ---
 
@@ -7,14 +7,24 @@
 
 ### Pin Connections
 
-| INMP441 Pin | Function | BeagleBone Black Pin | Description |
-|-------------|----------|---------------------|-------------|
+#### Microphone to BeagleBone
+
+| Microphone Pin | Function | BeagleBone Black Pin | Description |
+|----------------|----------|---------------------|-------------|
 | **VDD** | Power (3.3V) | **P9_3** | 3.3V DC power supply |
 | **GND** | Ground | **P9_1** | Digital ground |
 | **SD** | Serial Data | **P9_30** | I2S data (McASP0_AXR0) |
 | **WS** | Word Select | **P9_29** | I2S frame sync (McASP0_FSX) |
 | **SCK** | Serial Clock | **P9_31** | I2S bit clock (McASP0_ACLKX) |
-| **L/R** | Channel Select | **GND** | Left channel (connect to GND) |
+| **L/R or SEL** | Channel Select | **GND** | Left channel (connect to GND) |
+
+#### BeagleBone Internal Clock Jumper (REQUIRED)
+
+| From Pin | Function | To Pin | Function | Description |
+|----------|----------|--------|----------|-------------|
+| **P9_25** | CLKOUT2 (24.576 MHz) | **P9_28** | McASP0_AHCLKR | Clock source for perfect audio timing |
+
+**IMPORTANT:** The P9_25 → P9_28 jumper wire is **required** for proper audio capture. This routes the BeagleBone's onboard 24.576 MHz clock to the McASP peripheral, providing perfect clock accuracy for 48 kHz sampling.
 
 ---
 
@@ -60,13 +70,38 @@
         GND  [43] ●  ● [44] GPIO
         GND  [45] ●  ● [46] GPIO
 
-    P9_1  (GND)   ────────────────► INMP441 GND
-    P9_3  (3.3V)  ────────────────► INMP441 VDD
-    P9_30 (I2S_DATA) ─────────────► INMP441 SD
-    P9_29 (I2S_WS)   ─────────────► INMP441 WS
-    P9_31 (I2S_CLK)  ─────────────► INMP441 SCK
-    P9_1  (GND)   ────────────────► INMP441 L/R
+    P9_1  (GND)   ────────────────► Microphone GND
+    P9_3  (3.3V)  ────────────────► Microphone VDD
+    P9_30 (I2S_DATA) ─────────────► Microphone SD
+    P9_29 (I2S_WS)   ─────────────► Microphone WS
+    P9_31 (I2S_CLK)  ─────────────► Microphone SCK
+    P9_1  (GND)   ────────────────► Microphone L/R or SEL
+
+    *** CRITICAL: Clock Jumper Wire (on BeagleBone header) ***
+    P9_25 (CLKOUT2 - 24.576 MHz) ═══► P9_28 (McASP AHCLKR input)
 ```
+
+### Clock Jumper Explanation
+
+The **P9_25 → P9_28** jumper wire is essential for proper audio operation:
+
+**Why it's needed:**
+- BeagleBone has a 24.576 MHz oscillator on-board (originally for HDMI audio)
+- This frequency is **perfect** for 48 kHz audio (24.576 MHz / 512 = 48 kHz exactly)
+- Without this, the BeagleBone uses DPLL clocks which have 0.8% error
+- The SPH0645/INMP441 microphones reject data with that clock error
+
+**How it works:**
+- P9_25 is configured to output CLKOUT2 (the 24.576 MHz clock)
+- P9_28 is configured as McASP0's AHCLKR (Auxiliary High-frequency Clock Receive)
+- A simple jumper wire routes the clock from output to input
+- McASP uses this perfect clock instead of the inaccurate DPLL clock
+
+**Physical implementation:**
+- Use a standard female-to-female jumper wire
+- Length: ~2-3 inches (5-8 cm)
+- This wire stays on the BeagleBone header (not connected to microphone)
+- Both P9_25 and P9_28 are 3.3V logic - electrically safe
 
 ---
 
@@ -173,15 +208,22 @@
    - Female-to-female jumper wire
 
 8. **Connect I2S Clock (Blue wire)**
-   - INMP441 SCK → BeagleBone P9_31
+   - Microphone SCK → BeagleBone P9_31
    - Female-to-female jumper wire
 
-9. **Verify Connections**
+9. **Connect Clock Jumper (ANY color wire) - CRITICAL**
+   - BeagleBone P9_25 → BeagleBone P9_28
+   - Female-to-female jumper wire (~2-3 inches)
+   - This stays on the BeagleBone header (does not connect to microphone)
+   - Routes 24.576 MHz clock to McASP for perfect audio timing
+
+10. **Verify Connections**
    - Double-check each wire against the table above
    - Ensure no loose connections
    - Verify no short circuits between adjacent pins
+   - Verify the P9_25 → P9_28 clock jumper is in place
 
-10. **Power On**
+11. **Power On**
     - Reconnect BeagleBone power
     - Boot Linux
     - Proceed with device tree configuration
@@ -235,9 +277,11 @@ The BeagleBone Black has a Multi-channel Audio Serial Port (McASP) peripheral th
 ### Recommended Wire
 
 - **Type:** Female-to-female jumper wires (DuPont connectors)
-- **Length:** 10-15 cm (4-6 inches)
+- **Length:** 10-15 cm (4-6 inches) for microphone connections, 5-8 cm (2-3 inches) for clock jumper
 - **Gauge:** 22-26 AWG
-- **Count needed:** 6 wires
+- **Count needed:** 7 wires total
+  - 6 wires for microphone connections
+  - 1 wire for P9_25 → P9_28 clock jumper (on BeagleBone header)
 
 ### Wire Quality Considerations
 

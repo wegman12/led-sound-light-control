@@ -1,29 +1,34 @@
 /*
- * Device Tree Overlay for INMP441 I2S MEMS Microphone
- * BeagleBone Black - McASP0 Configuration with DYNAMIC Clock Control
+ * Device Tree Overlay for INMP441/SPH0645 I2S MEMS Microphone
+ * BeagleBone Black - McASP0 Configuration with 24.576 MHz CLKOUT2 Clock
  *
  * Hardware Required:
- *   - INMP441 I2S MEMS Microphone
+ *   - INMP441 or SPH0645 I2S MEMS Microphone
+ *   - Jumper wire: P9_25 → P9_28 (routes 24.576 MHz clock to McASP)
  *
  * Pins used:
+ *   P9_25 - CLKOUT2       (24.576 MHz clock OUTPUT - onboard oscillator)
+ *   P9_28 - McASP0_AHCLKR (24.576 MHz clock INPUT to McASP)
  *   P9_29 - McASP0_FSX    (I2S Frame Sync / Word Select OUTPUT to mic)
  *   P9_30 - McASP0_AXR0   (I2S Data INPUT from mic)
  *   P9_31 - McASP0_ACLKX  (I2S Bit Clock OUTPUT to mic)
  *
  * Clock Strategy:
- *   This overlay uses the MODIFIED davinci-mcasp driver that calls clk_set_rate()
- *   to dynamically program DPLL_PER_M2 to the optimal frequency for audio.
+ *   BeagleBone Black has a 24.576 MHz oscillator on-board (for HDMI audio).
+ *   This frequency is PERFECT for audio: 24.576 MHz / 512 = 48 kHz (exact).
  *
- *   Driver behavior:
- *   1. Calculates required BCLK (e.g., 48kHz * 64 = 3.072 MHz)
- *   2. Calculates optimal system clock (BCLK * 32 = 98.304 MHz)
- *   3. Calls clk_set_rate() to program DPLL_PER_M2
- *   4. Reads back actual achieved rate
- *   5. Calculates McASP dividers from actual rate
+ *   Clock flow:
+ *   1. CLKOUT2 (P9_25) outputs 24.576 MHz from onboard oscillator
+ *   2. Jumper wire connects P9_25 → P9_28
+ *   3. AHCLKR (P9_28) receives 24.576 MHz into McASP
+ *   4. McASP divides this to generate BCLK (3.072 MHz for 48 kHz)
+ *   5. McASP outputs BCLK on P9_31 to microphone
  *
- *   No fixed system-clock-frequency needed - driver sets it dynamically!
+ *   Result: 0% clock error (perfect 48 kHz sampling)
  *
- * Sample rate: 48000 Hz (or any rate - driver adapts automatically)
+ * Note: This disables HDMI audio to free up the CLKOUT2 signal.
+ *
+ * Sample rate: 48000 Hz (perfect accuracy)
  * Format: I2S
  * Channels: 1 (Mono - left channel)
  */
@@ -44,9 +49,11 @@
         __overlay__ {
             i2s_pins: pinmux_i2s_pins {
                 pinctrl-single,pins = <
+                    0x1ac 0x03  // P9_25: clkout2 (Mode 3, OUTPUT) - 24.576 MHz clock out
+                    0x19c 0x22  // P9_28: mcasp0_ahclkr (Mode 2, INPUT | PULLDOWN) - Clock input to McASP
                     0x198 0x20  // P9_30: mcasp0_axr0 (Mode 0, INPUT | PULLDOWN) - Data from mic
                     0x194 0x00  // P9_29: mcasp0_fsx (Mode 0, OUTPUT | PULLDOWN) - Frame sync clock
-                    0x19C 0x00  // P9_31: mcasp0_aclkx (Mode 0, OUTPUT | PULLDOWN) - Bit clock
+                    0x190 0x00  // P9_31: mcasp0_aclkx (Mode 0, OUTPUT | PULLDOWN) - Bit clock
                 >;
             };
         };
@@ -70,7 +77,7 @@
              * 0 = inactive
              * 1 = TX (transmit)
              * 2 = RX (receive)
-             * AXR0 = RX (receive data from INMP441)
+             * AXR0 = RX (receive data from microphone)
              */
             serial-dir = <
                 2 0 0 0
@@ -96,7 +103,8 @@
 
                 cpu_master: simple-audio-card,cpu {
                     sound-dai = <&mcasp0>;
-                    /* No system-clock-frequency specified - driver sets dynamically */
+                    /* Use 24.576 MHz from CLKOUT2 via AHCLKR */
+                    system-clock-frequency = <24576000>;
                 };
 
                 simple-audio-card,codec {
