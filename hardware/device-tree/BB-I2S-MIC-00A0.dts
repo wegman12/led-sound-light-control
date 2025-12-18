@@ -54,18 +54,15 @@
              * 0 = inactive
              * 1 = TX (transmit)
              * 2 = RX (receive)
-             * For I2S master mode, need TX serializer for clock generation
              * AXR0 = RX (receive data from INMP441)
-             * AXR1 = TX (dummy, for clock generation only)
              */
             serial-dir = <
-                2 1 0 0
+                2 0 0 0
                 0 0 0 0
                 0 0 0 0
                 0 0 0 0
             >;
 
-            tx-num-evt = <32>;   /* Enable TX for clock generation */
             rx-num-evt = <32>;
         };
     };
