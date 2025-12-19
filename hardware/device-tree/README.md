@@ -14,6 +14,7 @@ This directory contains the device tree overlay and tools for enabling I2S MEMS 
 ### On Local Machine
 
 1. **Compile the device tree overlay:**
+
    ```bash
    cd hardware/device-tree
    make compile
@@ -27,6 +28,7 @@ This directory contains the device tree overlay and tools for enabling I2S MEMS 
 ### On BeagleBone Black
 
 3. **Load the overlay:**
+
    ```bash
    ssh bbb2.wegman
    cd ~/led-sound-light-control/hardware/device-tree
@@ -87,6 +89,7 @@ arecord -l
 ```
 
 Expected output:
+
 ```
 **** List of CAPTURE Hardware Devices ****
 card 0: I2SMicrophone [I2S-Microphone], device 0: ...
@@ -97,7 +100,7 @@ card 0: I2SMicrophone [I2S-Microphone], device 0: ...
 Record a 5-second test:
 
 ```bash
-arecord -D hw:0,0 -f S16_LE -r 48000 -c 1 -d 5 test.wav
+arecord -D hw:0,0 -f S32_LE -r 48000 -c 1 -d 5 test.wav
 ```
 
 Make noise near the microphone during recording.
@@ -118,22 +121,23 @@ Or use the automated test:
 
 ### Pin Assignments
 
-| INMP441 Pin | BBB Pin | Function |
-|-------------|---------|----------|
-| SD | P9_28 | McASP0_AXR2 (Data) |
-| WS | P9_29 | McASP0_FSX (Frame Sync) |
-| SCK | P9_31 | McASP0_ACLKX (Bit Clock) |
+| INMP441 Pin | BBB Pin | Function                 |
+| ----------- | ------- | ------------------------ |
+| SD          | P9_28   | McASP0_AXR2 (Data)       |
+| WS          | P9_29   | McASP0_FSX (Frame Sync)  |
+| SCK         | P9_31   | McASP0_ACLKX (Bit Clock) |
 
 ### Audio Format
 
 - **Sample Rate:** 48000 Hz
-- **Format:** S16_LE (16-bit signed little-endian)
+- **Format:** S32_LE (32-bit signed little-endian)
 - **Channels:** 1 (Mono, left channel)
 - **Bit Clock:** 3.072 MHz (48kHz × 32bit × 2ch)
 
 ### Device Tree Configuration
 
 The overlay configures:
+
 - Pin multiplexing for McASP0 pins
 - McASP0 peripheral in I2S mode
 - Simple audio card driver
@@ -146,16 +150,19 @@ To automatically load the overlay on boot, you can either manually edit uEnv.txt
 ### Option A: Deploy Managed uEnv.txt (Recommended)
 
 We provide a uEnv.txt that's pre-configured with:
+
 - I2S microphone overlay enabled
 - Audio subsystem enabled (NOT disabled)
 - PRU overlay enabled
 
 **Deploy it:**
+
 ```bash
 make deploy-uenv DEPLOY_HOST=bbb2.wegman
 ```
 
 This will:
+
 - Backup the existing /boot/uEnv.txt (to /boot/uEnv.txt.backup.TIMESTAMP)
 - Deploy our uEnv.txt
 - Prompt you to reboot
@@ -165,17 +172,20 @@ This will:
 ### Option B: Manual Edit
 
 1. Edit `/boot/uEnv.txt`:
+
    ```bash
    ssh bbb2.wegman
    sudo nano /boot/uEnv.txt
    ```
 
 2. Add this line (around line 20):
+
    ```
    uboot_overlay_addr4=/lib/firmware/BB-I2S-MIC-00A0.dtbo
    ```
 
 3. Ensure audio is NOT disabled (line should be commented):
+
    ```
    #disable_uboot_overlay_audio=1
    ```
@@ -190,16 +200,19 @@ This will:
 ### Overlay Won't Load
 
 **Check slots:**
+
 ```bash
 cat /sys/devices/platform/bone_capemgr/slots
 ```
 
 **Check dmesg for errors:**
+
 ```bash
 dmesg | grep -i "i2s\|mcasp\|audio"
 ```
 
 **Common issues:**
+
 - Overlay file not in `/lib/firmware/`
 - Pin conflict with other overlays
 - Syntax error in device tree
@@ -207,6 +220,7 @@ dmesg | grep -i "i2s\|mcasp\|audio"
 ### No Audio Captured
 
 **Check wiring:**
+
 - VDD → P9_3 (3.3V)
 - GND → P9_1
 - SD → P9_28
@@ -215,16 +229,19 @@ dmesg | grep -i "i2s\|mcasp\|audio"
 - L/R → GND
 
 **Check ALSA device:**
+
 ```bash
 arecord -l
 ```
 
 **Test with verbose output:**
+
 ```bash
-arecord -D hw:0,0 -f S16_LE -r 48000 -c 1 -d 5 -vv test.wav
+arecord -D hw:0,0 -f S32_LE -r 48000 -c 1 -d 5 -vv test.wav
 ```
 
 **Check McASP status:**
+
 ```bash
 dmesg | tail -30
 ```
@@ -232,12 +249,14 @@ dmesg | tail -30
 ### Silent/Zero Audio
 
 **Possible causes:**
+
 - Microphone not powered (check VDD connection)
 - L/R pin not connected to GND
 - Wrong data pin (must be P9_28)
 - Damaged microphone
 
 **Verify power:**
+
 ```bash
 # Check 3.3V rail
 cat /sys/class/gpio/export
@@ -246,12 +265,14 @@ cat /sys/class/gpio/export
 ### Distorted Audio
 
 **Possible causes:**
+
 - Loose wiring connections
 - Long wire runs (>20cm)
 - EMI from power supply
 - Sample rate mismatch
 
 **Try:**
+
 - Secure all connections
 - Shorten wires
 - Move away from power supplies
@@ -271,11 +292,13 @@ simple-audio-card,cpu {
 ```
 
 Clock frequencies:
+
 - 48 kHz: 24576000 (48000 × 512)
 - 44.1 kHz: 22579200 (44100 × 512)
 - 32 kHz: 16384000 (32000 × 512)
 
 Recompile and reload:
+
 ```bash
 make compile deploy
 ```
@@ -286,13 +309,14 @@ For stereo (2 microphones on left and right channels):
 
 1. Wire second INMP441 with L/R → VDD (right channel)
 2. Edit device tree:
+
    ```c
    tdm-slots = <2>;  // Already configured
    ```
 
 3. Capture with 2 channels:
    ```bash
-   arecord -D hw:0,0 -f S16_LE -r 48000 -c 2 -d 5 stereo.wav
+   arecord -D hw:0,0 -f S32_LE -r 48000 -c 2 -d 5 stereo.wav
    ```
 
 ## References
