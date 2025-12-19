@@ -11,10 +11,14 @@ import (
 
 const (
 	// PRU Shared Memory Configuration
-	pruSharedMemAddr        = 0x4A310000
-	pruSharedMemSize        = 0x10000  // 64 KB
-	audioControlBlockOffset = 0x2000   // 8KB into shared memory (after PRU0's 4KB)
-	devMem                  = "/dev/mem"
+	// Physical address of PRU shared memory (from Linux perspective)
+	pruSharedMemAddr = 0x4A310000
+	pruSharedMemSize = 0x3000 // 12 KB (was incorrectly 64KB)
+
+	// PRU1 audio control block offset (must match pru_shared_memory.h)
+	audioControlBlockOffset = 0x0900 // After PRU0 control block (was 0x2000)
+
+	devMem = "/dev/mem"
 )
 
 // AudioControlBlock matches the C struct in PRU1 audio firmware

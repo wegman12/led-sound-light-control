@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	// Raw Capture Memory Configuration
-	rawControlBlockOffset = 0x2000 // 8KB into shared memory (same as audio)
-	rawBufferOffset       = 0x2100 // 8KB + 256 bytes
+	// Raw Capture Memory Configuration (must match pru_shared_memory.h)
+	rawControlBlockOffset = 0x0900 // PRU1 audio control block (was 0x2000)
+	rawBufferOffset       = 0x0A00 // Sample buffer A start (was 0x2100)
 	rawBufferSize         = 4096   // Number of uint16 samples
 	rawBufferBytes        = rawBufferSize * 2
 )
