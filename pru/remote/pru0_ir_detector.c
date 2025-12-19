@@ -22,6 +22,7 @@
 #include <rsc_types.h>
 #include <pru_iep.h>
 #include <pru_intc.h>
+#include "../pru_shared_memory.h"
 
 /* PRU input/output registers */
 volatile register uint32_t __R30;
@@ -54,11 +55,11 @@ struct my_resource_table {
 /* GPCFG0 register values */
 #define GPCFG_PRU_GPI_MODE  0x0  /* Direct connect mode - GPI pins connect to __R31 */
 
-/* Memory Layout */
-#define PRU_SHARED_MEM      0x00010000
-#define BUTTON_RING_BUFFER  0x00000000  /* Offset 0: Ring buffer */
-#define CONTROL_BLOCK       0x00001000  /* Offset 4KB: Control structure */
-#define RING_BUFFER_SIZE    256         /* 256 events */
+/* Memory Layout - uses shared header for consistency with PRU1 */
+#define PRU_SHARED_MEM      PRU_SHARED_MEM_BASE
+#define BUTTON_RING_BUFFER  PRU0_IR_RING_BUFFER_OFFSET
+#define CONTROL_BLOCK       PRU0_IR_CONTROL_OFFSET
+#define RING_BUFFER_SIZE    PRU0_IR_RING_BUFFER_ENTRIES
 
 /* PRU Clock: 200 MHz = 5 ns per cycle */
 #define PRU_CLOCK_HZ        200000000

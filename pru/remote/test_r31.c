@@ -6,6 +6,7 @@
 #include <pru_ctrl.h>
 #include <pru_cfg.h>
 #include <rsc_types.h>
+#include "../pru_shared_memory.h"
 
 /* PRU input/output registers */
 volatile register uint32_t __R30;
@@ -23,9 +24,9 @@ struct my_resource_table {
     },
 };
 
-/* Shared memory for monitoring */
-#define PRU_SHARED_MEM      0x00010000
-#define CONTROL_BLOCK       0x00001000
+/* Shared memory for monitoring - uses shared header */
+#define PRU_SHARED_MEM      PRU_SHARED_MEM_BASE
+#define CONTROL_BLOCK       PRU0_IR_CONTROL_OFFSET
 
 struct control_block {
     volatile uint32_t write_index;
