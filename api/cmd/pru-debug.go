@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	pruSharedMemAddr  = 0x4A310000
-	pruSharedMemSize  = 0x3000
-	controlBlockOffset = 0x1000
+	pruSharedMemAddr   = 0x4A310000
+	pruSharedMemSize   = 0x3000
+	controlBlockOffset = 0x0800 // PRU0 IR control block (was 0x1000)
 )
 
 type pruControlBlock struct {

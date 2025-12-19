@@ -10,11 +10,16 @@ import (
 
 const (
 	// PRU Shared Memory Configuration
-	pruSharedMemAddr  = 0x4A310000
-	pruSharedMemSize  = 0x3000 // 12 KB
-	ringBufferSize    = 256
-	controlBlockOffset = 0x1000
-	devMem            = "/dev/mem"
+	// Physical address of PRU shared memory (from Linux perspective)
+	pruSharedMemAddr = 0x4A310000
+	pruSharedMemSize = 0x3000 // 12 KB
+
+	// PRU0 IR detector memory layout (must match pru_shared_memory.h)
+	ringBufferOffset   = 0x0000 // Ring buffer at start of shared memory
+	ringBufferSize     = 256    // 256 events
+	controlBlockOffset = 0x0800 // Control block after ring buffer (was 0x1000)
+
+	devMem = "/dev/mem"
 )
 
 // pruControlBlock matches the C struct in PRU firmware

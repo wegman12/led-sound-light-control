@@ -40,13 +40,14 @@ fi
 echo ""
 
 # 3. Read PRU shared memory control block
-echo -e "${BLUE}3. PRU Control Block (0x4A311000):${NC}"
+# Control block is at offset 0x0800 from base 0x4A310000 = 0x4A310800
+echo -e "${BLUE}3. PRU Control Block (0x4A310800):${NC}"
 echo "   Reading 6 uint32 values..."
 echo "   Format: write_idx read_idx event_cnt error_cnt overrun_cnt status"
 echo ""
 
-# Read control block
-CONTROL_BLOCK=$(sudo dd if=/dev/mem bs=4 skip=$((0x4A311000/4)) count=6 2>/dev/null | od -An -t u4)
+# Read control block (base 0x4A310000 + offset 0x800 = 0x4A310800)
+CONTROL_BLOCK=$(sudo dd if=/dev/mem bs=4 skip=$((0x4A310800/4)) count=6 2>/dev/null | od -An -t u4)
 
 if [ -z "$CONTROL_BLOCK" ]; then
     echo -e "   ${RED}✗ Failed to read shared memory${NC}"
@@ -125,7 +126,7 @@ LAST_EVENT_CNT=$EVENT_CNT
 while true; do
     sleep 0.5
 
-    CONTROL_BLOCK=$(sudo dd if=/dev/mem bs=4 skip=$((0x4A311000/4)) count=6 2>/dev/null | od -An -t u4)
+    CONTROL_BLOCK=$(sudo dd if=/dev/mem bs=4 skip=$((0x4A310800/4)) count=6 2>/dev/null | od -An -t u4)
     read -r WRITE_IDX READ_IDX EVENT_CNT ERROR_CNT OVERRUN_CNT STATUS <<< "$CONTROL_BLOCK"
 
     BUFFERED=$((WRITE_IDX - READ_IDX))
