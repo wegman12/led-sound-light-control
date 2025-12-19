@@ -96,15 +96,41 @@
 
 /*
  * =============================================================================
- * FIFO Registers (from MCASP0_DATA_BASE + offset)
- * Used for DMA transfers, offset 0x1000 from data base for write FIFO
+ * FIFO Registers (from MCASP0_CFG_BASE + 0x1000)
  * =============================================================================
+ *
+ * IMPORTANT: The AFIFO registers are at CFG_BASE + 0x1000 (0x48039000),
+ * NOT at DATA_BASE + 0x1000 as some documentation suggests!
+ *
+ * The AM335x McASP has an Audio FIFO (AFIFO) that buffers data between the
+ * serializers and the data port. The FIFO must be enabled for data to flow
+ * through the data port at 0x46000000.
+ *
+ * For receive with AFIFO:
+ *   1. Configure RFIFOCTL with RNUMDMA (words per event) and RENA=1
+ *   2. Read from data port (0x46000000) when RFIFOSTS shows data available
+ *
+ * Without AFIFO enabled, you would use RBUF polling:
+ *   1. Wait for SRCTL.RRDY = 1
+ *   2. Read from RBUF0 at 0x48038280
+ *
+ * The kernel driver always uses AFIFO + DMA for efficiency.
  */
 
-#define MCASP_WFIFOCTL      0x1000  /* Write FIFO Control */
+#define MCASP_WFIFOCTL      0x1000  /* Write FIFO Control (CFG_BASE + 0x1000) */
 #define MCASP_WFIFOSTS      0x1004  /* Write FIFO Status */
-#define MCASP_RFIFOCTL      0x1008  /* Read FIFO Control */
+#define MCASP_RFIFOCTL      0x1008  /* Read FIFO Control (CFG_BASE + 0x1008) */
 #define MCASP_RFIFOSTS      0x100C  /* Read FIFO Status */
+
+/* FIFO Control Register Bits (RFIFOCTL / WFIFOCTL) */
+#define MCASP_FIFOCTL_NUMDMA_SHIFT  0   /* Words transferred per DMA event (8 bits) */
+#define MCASP_FIFOCTL_NUMDMA_MASK   0xFF
+#define MCASP_FIFOCTL_NUMEVT_SHIFT  8   /* Words in FIFO before DMA event (8 bits) */
+#define MCASP_FIFOCTL_NUMEVT_MASK   0xFF
+#define MCASP_FIFOCTL_ENA           (1 << 16)  /* FIFO Enable */
+
+/* FIFO Status Register Bits (RFIFOSTS / WFIFOSTS) */
+#define MCASP_FIFOSTS_LEVEL_MASK    0xFF  /* Current FIFO level (words) */
 
 /*
  * =============================================================================

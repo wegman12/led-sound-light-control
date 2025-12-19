@@ -69,8 +69,8 @@ func init() {
 	rootCmd.AddCommand(testCmd)
 }
 
-// decodeStatus returns firmware mode and description from status code
-func decodeStatus(status uint32) (mode string, desc string, sampleRate uint32) {
+// decodeStatusFull returns firmware mode, description, and sample rate from status code
+func decodeStatusFull(status uint32) (mode string, desc string, sampleRate uint32) {
 	switch status {
 	case statusI2SRunning:
 		return "I2S", "I2S/McASP firmware (48 kHz)", sampleRateI2S
@@ -135,7 +135,7 @@ func runTest(cmd *cobra.Command, args []string) {
 	}
 
 	// Decode firmware mode
-	mode, desc, sampleRate := decodeStatus(controlBlock.Status)
+	mode, desc, sampleRate := decodeStatusFull(controlBlock.Status)
 
 	fmt.Printf("Status:      0x%08X (%s)\n", controlBlock.Status, desc)
 	fmt.Printf("Mode:        %s\n", mode)

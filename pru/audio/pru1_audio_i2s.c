@@ -20,7 +20,7 @@
 #include <pru_iep.h>
 #include "resource_table_empty.h"
 #include "fft.h"
-#include "../pru_shared_memory.h"
+#include "pru_shared_memory.h"
 #include "am335x_mcasp.h"
 
 /*
@@ -40,6 +40,34 @@
 
 /* PRU and Clock Configuration */
 #define PRU_CLOCK_HZ        200000000
+
+/*
+ * =============================================================================
+ * PRCM (Power/Reset/Clock Management) Registers
+ * =============================================================================
+ * Since the kernel McASP driver is disabled, the PRU must enable clocks.
+ */
+#define CM_PER_BASE             0x44E00000
+#define CM_PER_MCASP0_CLKCTRL   (*((volatile uint32_t *)(CM_PER_BASE + 0x34)))
+#define CM_PER_MODULEMODE_ENABLE    0x02
+#define CM_PER_IDLEST_FUNCTIONAL    0x00
+
+/* CLKOUT2 Control - outputs 24.576 MHz clock on P9_25 for McASP */
+#define CM_CLKOUT_CTRL          (*((volatile uint32_t *)(CM_PER_BASE + 0x700)))
+#define CLKOUT2_EN              (1 << 7)    /* Enable CLKOUT2 */
+#define CLKOUT2_DIV_SHIFT       0           /* Divider bits 0-2 */
+#define CLKOUT2_SOURCE_SHIFT    3           /* Source bits 3-5 */
+
+/* CLKOUT2 source options:
+ * 0 = CLK_32768 (32.768 kHz)
+ * 1 = L3_GCLK
+ * 2 = DPLL_DDR_M2
+ * 3 = DPLL_PER_M2 (192 MHz on standard BBB)
+ * 4 = LCD_CLK
+ *
+ * For 24.576 MHz, we need audio PLL which requires additional config.
+ * As a workaround, we'll use the HDMI audio path configuration.
+ */
 
 /*
  * =============================================================================
@@ -127,6 +155,16 @@ struct audio_control_block {
     volatile uint32_t mid_low_prev;
     volatile uint32_t mid_high_prev;
     volatile uint32_t treble_prev;
+
+    /* Debug: McASP register values for diagnostics */
+    volatile uint32_t debug_gblctl;      /* GBLCTL register after init */
+    volatile uint32_t debug_rstat;       /* RSTAT register (updated in loop) */
+    volatile uint32_t debug_pfunc;       /* PFUNC register */
+    volatile uint32_t debug_pdir;        /* PDIR register */
+    volatile uint32_t debug_aclkrctl;    /* ACLKRCTL register */
+    volatile uint32_t debug_ahclkrctl;   /* AHCLKRCTL register */
+    volatile uint32_t debug_srctl0;      /* SRCTL0 register */
+    volatile uint32_t debug_loop_count;  /* Loop iterations waiting for data */
 };
 
 /* Sample type: 32-bit signed for 24-bit I2S data */
@@ -232,79 +270,104 @@ static void init_mcasp_i2s(struct audio_control_block *ctrl) {
      * Format: I2S, 32-bit slots, left channel only
      */
 
+    /* Step 0: Enable McASP0 clock via PRCM
+     * Since the kernel driver is disabled, we must enable clocks ourselves.
+     * Write 0x02 to enable module, then wait for IDLEST to show functional.
+     */
+    CM_PER_MCASP0_CLKCTRL = CM_PER_MODULEMODE_ENABLE;
+
+    /* Wait for clock to stabilize (IDLEST bits [17:16] should be 0x00) */
+    while ((CM_PER_MCASP0_CLKCTRL & 0x00030000) != CM_PER_IDLEST_FUNCTIONAL) {
+        /* Wait for module to become functional */
+        __delay_cycles(100);
+    }
+
     /* Step 1: Reset McASP - clear all global control bits */
     MCASP_CFG_WRITE(MCASP_GBLCTL, 0x00000000);
 
     /* Step 2: Configure pin directions
-     * AHCLKR (P9_28) = Input (external clock)
-     * ACLKX (P9_31) = Output (bit clock to mic)
-     * AFSX (P9_29) = Output (frame sync to mic)
-     * AXR0 (P9_30) = Input (data from mic)
+     * Match kernel PDIR = 0xB4000000:
+     *   AFSR (bit 31) = Output
+     *   ACLKR (bit 29) = Output (internal clock drives receive clock too)
+     *   AFSX (bit 28) = Output (frame sync to mic)
+     *   ACLKX (bit 26) = Output (bit clock to mic)
+     *   AXR0 (bit 0) = Input (data from mic, not set)
      */
     MCASP_CFG_WRITE(MCASP_PDIR,
-        MCASP_PDIR_ACLKX |    /* ACLKX = output */
-        MCASP_PDIR_AFSX       /* AFSX = output */
-        /* AHCLKR = input (bit not set) */
-        /* AXR0 = input (bit not set) */
+        MCASP_PDIR_AFSR |     /* AFSR = output */
+        MCASP_PDIR_ACLKR |    /* ACLKR = output (internal clock) */
+        MCASP_PDIR_AFSX |     /* AFSX = output */
+        MCASP_PDIR_ACLKX      /* ACLKX = output */
     );
 
-    /* Step 3: Configure high-frequency receive clock (AHCLKR)
-     * HCLKRM = 0: External clock source (from AHCLKR pin)
-     * HCLKRDIV = 0: No division (use 24.576 MHz directly)
+    /* Step 3: Configure high-frequency clock (AHCLK)
+     * Using INTERNAL clock mode to match kernel driver configuration.
+     * The kernel McASP driver uses mcasp0_fck (24 MHz) as the source.
+     * HCLKRM = 1: Internal clock source
+     * HCLKRDIV = 0: No division (use 24 MHz directly)
+     *
+     * Note: This gives ~46.875 kHz sample rate (2.3% slower than 48 kHz)
+     * but the MEMS microphone tolerates this clock error.
      */
     MCASP_CFG_WRITE(MCASP_AHCLKRCTL,
-        (HCLK_DIV << MCASP_AHCLKRCTL_HCLKRDIV_SHIFT)
-        /* HCLKRM = 0 (external) */
+        MCASP_AHCLKRCTL_HCLKRM  /* Internal clock mode (0x8000) */
     );
 
     /* Step 4: Configure receive bit clock (ACLKR/ACLKX)
-     * For I2S master mode, we generate the bit clock
+     * Match kernel driver: ACLKRCTL = 0xA7
      * CLKRM = 1: Internal clock (derived from AHCLK)
-     * CLKRDIV = 7: Divide by 8 (24.576 MHz / 8 = 3.072 MHz)
-     * CLKRP = 0: Rising edge for receive
+     * CLKRDIV = 7: Divide by 8 (24 MHz / 8 = 3 MHz)
+     * CLKRP = 1: Inverted polarity (bit 7)
      */
     MCASP_CFG_WRITE(MCASP_ACLKRCTL,
         (ACLK_DIV << MCASP_ACLKRCTL_CLKRDIV_SHIFT) |
-        MCASP_ACLKRCTL_CLKRM   /* Internal clock mode */
+        MCASP_ACLKRCTL_CLKRM |  /* Internal clock mode */
+        MCASP_ACLKRCTL_CLKRP    /* Inverted polarity */
     );
 
     /* Also configure transmit clock (needed for clock output on ACLKX) */
     MCASP_CFG_WRITE(MCASP_AHCLKXCTL,
-        (HCLK_DIV << MCASP_AHCLKRCTL_HCLKRDIV_SHIFT)
+        MCASP_AHCLKRCTL_HCLKRM  /* Internal clock mode */
     );
     MCASP_CFG_WRITE(MCASP_ACLKXCTL,
         (ACLK_DIV << MCASP_ACLKRCTL_CLKRDIV_SHIFT) |
-        MCASP_ACLKRCTL_CLKRM
+        MCASP_ACLKRCTL_CLKRM |
+        MCASP_ACLKRCTL_CLKRP
     );
 
     /* Step 5: Configure receive frame sync (AFSR/AFSX)
+     * Match kernel driver: AFSRCTL = 0x113
+     * FSRP = 1: Frame sync polarity inverted
      * FSRM = 1: Internal frame sync (we generate it)
-     * FSRP = 0: Frame sync active high (I2S standard)
      * FRWID = 1: Frame sync is one word wide
      * RMOD = 2: 2 slots per frame (stereo, we use left only)
      */
     MCASP_CFG_WRITE(MCASP_AFSRCTL,
         (2 << MCASP_AFSRCTL_RMOD_SHIFT) |  /* 2 TDM slots */
         MCASP_AFSRCTL_FRWID |              /* Word-wide frame sync */
-        MCASP_AFSRCTL_FSRM                 /* Internal frame sync */
+        MCASP_AFSRCTL_FSRM |               /* Internal frame sync */
+        MCASP_AFSRCTL_FSRP                 /* Inverted polarity */
     );
 
     /* Also configure transmit frame sync (for FSX output) */
     MCASP_CFG_WRITE(MCASP_AFSXCTL,
         (2 << MCASP_AFSRCTL_RMOD_SHIFT) |
         MCASP_AFSRCTL_FRWID |
-        MCASP_AFSRCTL_FSRM
+        MCASP_AFSRCTL_FSRM |
+        MCASP_AFSRCTL_FSRP
     );
 
     /* Step 6: Configure receive format
+     * Match kernel RFMT = 0x180F0:
      * RSSZ = 0x0F: 32-bit slot size
      * RDATDLY = 1: 1-bit delay (I2S standard)
-     * RRVRS = 0: MSB first
+     * RRVRS = 1: LSB first (bit reversal - matching kernel)
      * RPAD = 0: Pad with zeros
      */
     MCASP_CFG_WRITE(MCASP_RFMT,
         (MCASP_SLOT_SIZE_32 << MCASP_RFMT_RSSZ_SHIFT) |
-        (MCASP_DATDLY_1BIT << MCASP_RFMT_RDATDLY_SHIFT)
+        (MCASP_DATDLY_1BIT << MCASP_RFMT_RDATDLY_SHIFT) |
+        MCASP_RFMT_RRVRS   /* LSB first to match kernel */
     );
 
     /* Step 7: Configure receive mask (all bits valid) */
@@ -316,87 +379,157 @@ static void init_mcasp_i2s(struct audio_control_block *ctrl) {
      */
     MCASP_CFG_WRITE(MCASP_RTDM, 0x00000001);  /* Only slot 0 (left) */
 
+    /* Step 8b: Configure transmit format, mask, and TDM slots
+     * TX path generates clocks but doesn't need active serializer/state machine.
+     * Kernel uses XTDM=0 even for RX-only operation.
+     */
+    MCASP_CFG_WRITE(MCASP_XFMT,
+        (MCASP_SLOT_SIZE_32 << MCASP_RFMT_RSSZ_SHIFT) |
+        (MCASP_DATDLY_1BIT << MCASP_RFMT_RDATDLY_SHIFT)
+    );
+    MCASP_CFG_WRITE(MCASP_XMASK, 0xFFFFFFFF);
+    MCASP_CFG_WRITE(MCASP_XTDM, 0x00000000);  /* No TX slots - matches kernel */
+
     /* Step 9: Configure serializer 0 for receive */
     MCASP_CFG_WRITE(MCASP_SRCTL0,
         (MCASP_SRMOD_RX << MCASP_SRCTL_SRMOD_SHIFT)
     );
 
-    /* Step 10: Enable McASP clocks and state machines
-     * Must be done in specific order per TRM
+    /*
+     * Step 9b: Enable Audio FIFO (AFIFO) for receive
+     *
+     * IMPORTANT: Must enable AFIFO BEFORE starting the receive state machine!
+     * The kernel driver enables FIFO early in the initialization sequence.
+     *
+     * IMPORTANT: FIFO registers are at CFG_BASE + 0x1000 (0x48039xxx),
+     * NOT at DATA_BASE + 0x1000!
+     *
+     * The AFIFO routes serializer data to the data port at 0x46000000.
+     * Without AFIFO enabled, data goes only to RBUF which doesn't work
+     * reliably for CPU polling.
+     *
+     * RFIFOCTL configuration:
+     *   RNUMDMA [7:0] = 1: Transfer 1 word per "DMA event" (we poll instead)
+     *   RNUMEVT [15:8] = 1: Generate event when 1 word in FIFO
+     *   RENA [16] = 1: Enable receive FIFO
      */
+    MCASP_CFG_WRITE(MCASP_RFIFOCTL,
+        (1 << MCASP_FIFOCTL_NUMDMA_SHIFT) |    /* 1 word per transfer */
+        (1 << MCASP_FIFOCTL_NUMEVT_SHIFT) |    /* Event when 1 word ready */
+        MCASP_FIFOCTL_ENA                      /* Enable FIFO */
+    );
+
+    /* Step 10: Enable McASP clocks and state machines
+     * Must be done in specific order per TRM, waiting for each bit
+     */
+    uint32_t gblctl;
 
     /* Enable high-frequency clock dividers */
     MCASP_CFG_WRITE(MCASP_GBLCTL,
         MCASP_GBLCTL_RHCLKRST |   /* Release HCLKR from reset */
         MCASP_GBLCTL_XHCLKRST     /* Release HCLKX from reset */
     );
-
-    /* Wait for clocks to stabilize */
-    __delay_cycles(1000);
+    /* Wait for bits to be set */
+    while ((MCASP_CFG_READ(MCASP_GBLCTL) & (MCASP_GBLCTL_RHCLKRST | MCASP_GBLCTL_XHCLKRST))
+           != (MCASP_GBLCTL_RHCLKRST | MCASP_GBLCTL_XHCLKRST)) {
+        __delay_cycles(10);
+    }
 
     /* Enable clock dividers */
-    MCASP_CFG_WRITE(MCASP_GBLCTL,
-        MCASP_GBLCTL_RHCLKRST |
-        MCASP_GBLCTL_XHCLKRST |
-        MCASP_GBLCTL_RCLKRST |    /* Release RCLK from reset */
-        MCASP_GBLCTL_XCLKRST      /* Release XCLK from reset */
-    );
+    gblctl = MCASP_CFG_READ(MCASP_GBLCTL);
+    MCASP_CFG_WRITE(MCASP_GBLCTL, gblctl | MCASP_GBLCTL_RCLKRST | MCASP_GBLCTL_XCLKRST);
+    while ((MCASP_CFG_READ(MCASP_GBLCTL) & (MCASP_GBLCTL_RCLKRST | MCASP_GBLCTL_XCLKRST))
+           != (MCASP_GBLCTL_RCLKRST | MCASP_GBLCTL_XCLKRST)) {
+        __delay_cycles(10);
+    }
 
-    __delay_cycles(1000);
+    /*
+     * CRITICAL FIX: Re-enable AHCLK after clock reset sequence.
+     * Hardware clears AHCLKXE/AHCLKRE (HCLKRM) bits when releasing clock dividers
+     * from reset (TXCLKRST/RXCLKRST). Must re-enable them here.
+     * This fix is from the kernel driver patch that made ALSA work.
+     */
+    MCASP_CFG_WRITE(MCASP_AHCLKRCTL, MCASP_AHCLKRCTL_HCLKRM);
+    MCASP_CFG_WRITE(MCASP_AHCLKXCTL, MCASP_AHCLKRCTL_HCLKRM);
 
-    /* Clear serializers */
-    MCASP_CFG_WRITE(MCASP_GBLCTL,
-        MCASP_GBLCTL_RHCLKRST |
-        MCASP_GBLCTL_XHCLKRST |
-        MCASP_GBLCTL_RCLKRST |
-        MCASP_GBLCTL_XCLKRST |
-        MCASP_GBLCTL_RSRCLR       /* Clear receive serializers */
-    );
+    /* Enable RX serializer only (no TX serializer - matches kernel) */
+    gblctl = MCASP_CFG_READ(MCASP_GBLCTL);
+    MCASP_CFG_WRITE(MCASP_GBLCTL, gblctl | MCASP_GBLCTL_RSRCLR);
+    while ((MCASP_CFG_READ(MCASP_GBLCTL) & MCASP_GBLCTL_RSRCLR) != MCASP_GBLCTL_RSRCLR) {
+        __delay_cycles(10);
+    }
 
-    __delay_cycles(1000);
+    /* Enable RX state machine only (no TX state machine - matches kernel) */
+    gblctl = MCASP_CFG_READ(MCASP_GBLCTL);
+    MCASP_CFG_WRITE(MCASP_GBLCTL, gblctl | MCASP_GBLCTL_RSMRST);
+    while ((MCASP_CFG_READ(MCASP_GBLCTL) & MCASP_GBLCTL_RSMRST) != MCASP_GBLCTL_RSMRST) {
+        __delay_cycles(10);
+    }
 
-    /* Enable state machines */
-    MCASP_CFG_WRITE(MCASP_GBLCTL,
-        MCASP_GBLCTL_RHCLKRST |
-        MCASP_GBLCTL_XHCLKRST |
-        MCASP_GBLCTL_RCLKRST |
-        MCASP_GBLCTL_XCLKRST |
-        MCASP_GBLCTL_RSRCLR |
-        MCASP_GBLCTL_RSMRST       /* Release receive state machine */
-    );
-
-    __delay_cycles(1000);
-
-    /* Enable frame sync generators */
-    MCASP_CFG_WRITE(MCASP_GBLCTL,
-        MCASP_GBLCTL_RHCLKRST |
-        MCASP_GBLCTL_XHCLKRST |
-        MCASP_GBLCTL_RCLKRST |
-        MCASP_GBLCTL_XCLKRST |
-        MCASP_GBLCTL_RSRCLR |
-        MCASP_GBLCTL_RSMRST |
-        MCASP_GBLCTL_RFRST |      /* Release receive frame sync */
-        MCASP_GBLCTL_XFRST        /* Release transmit frame sync */
-    );
+    /* Enable frame sync generators (both RX and TX) */
+    gblctl = MCASP_CFG_READ(MCASP_GBLCTL);
+    MCASP_CFG_WRITE(MCASP_GBLCTL, gblctl | MCASP_GBLCTL_RFRST | MCASP_GBLCTL_XFRST);
+    while ((MCASP_CFG_READ(MCASP_GBLCTL) & (MCASP_GBLCTL_RFRST | MCASP_GBLCTL_XFRST))
+           != (MCASP_GBLCTL_RFRST | MCASP_GBLCTL_XFRST)) {
+        __delay_cycles(10);
+    }
 
     /* Clear any pending status */
     MCASP_CFG_WRITE(MCASP_RSTAT, 0xFFFFFFFF);
 
+    /* Capture register values for debugging */
+    ctrl->debug_gblctl = MCASP_CFG_READ(MCASP_GBLCTL);
+    ctrl->debug_rstat = MCASP_CFG_READ(MCASP_RSTAT);
+    ctrl->debug_pfunc = MCASP_CFG_READ(MCASP_PFUNC);
+    ctrl->debug_pdir = MCASP_CFG_READ(MCASP_PDIR);
+    ctrl->debug_aclkrctl = MCASP_CFG_READ(MCASP_ACLKRCTL);
+    ctrl->debug_ahclkrctl = MCASP_CFG_READ(MCASP_AHCLKRCTL);
+    ctrl->debug_srctl0 = MCASP_CFG_READ(MCASP_SRCTL0);
+    ctrl->debug_loop_count = 0;
+
     ctrl->status = STATUS_MCASP_INIT;
 }
 
-/* Read sample from McASP receive buffer
+/* Read sample from McASP FIFO data port
  * Returns 24-bit signed sample in 32-bit container
- * Blocks until data is available
+ * Blocks until data is available (with timeout tracking)
+ *
+ * The AFIFO routes serializer data to the data port at 0x46000000.
+ * We poll RFIFOSTS (at CFG_BASE + 0x100C) to check when data is available,
+ * then read directly from the data port.
  */
-static inline int32_t read_mcasp_sample(void) {
-    /* Wait for receive data ready */
-    while (!(MCASP_CFG_READ(MCASP_RSTAT) & MCASP_RSTAT_RDATA)) {
-        /* Busy wait */
+static inline int32_t read_mcasp_sample(struct audio_control_block *ctrl) {
+    uint32_t loops = 0;
+    uint32_t fifo_level;
+
+    /* Wait for FIFO to have data (RFIFOSTS level > 0)
+     * NOTE: RFIFOSTS is at CFG_BASE + 0x100C, not DATA_BASE!
+     */
+    while (1) {
+        fifo_level = MCASP_CFG_READ(MCASP_RFIFOSTS) & MCASP_FIFOSTS_LEVEL_MASK;
+        if (fifo_level > 0) {
+            break;
+        }
+
+        loops++;
+        /* Update debug every 1M iterations to show we're alive */
+        if ((loops & 0xFFFFF) == 0) {
+            ctrl->debug_loop_count = loops;
+            ctrl->debug_rstat = MCASP_CFG_READ(MCASP_RSTAT);
+        }
+        /* Safety: after ~100M loops (~0.5 sec at 200MHz), increment error */
+        if (loops > 100000000) {
+            ctrl->mcasp_errors++;
+            loops = 0;
+        }
     }
 
-    /* Read from receive buffer 0 (serializer 0) */
-    int32_t raw = (int32_t)MCASP_CFG_READ(MCASP_RBUF0);
+    /*
+     * Read from McASP data port (0x46000000)
+     * This is where AFIFO makes samples available.
+     * Reading automatically pops from the FIFO.
+     */
+    int32_t raw = (int32_t)(*((volatile uint32_t *)MCASP0_DATA_BASE));
 
     /* I2S data is MSB-justified in 32-bit word
      * For 24-bit microphone, data is in bits [31:8]
@@ -488,7 +621,7 @@ void main(void) {
     /* Main sampling loop - McASP provides 48 kHz timing */
     while (1) {
         /* Read sample from McASP (blocks until data ready) */
-        sample = read_mcasp_sample();
+        sample = read_mcasp_sample(ctrl);
 
         /* Store in buffer */
         current_buffer[buffer_index] = sample;

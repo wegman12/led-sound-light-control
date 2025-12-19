@@ -92,14 +92,28 @@
         };
     };
 
-    /* Fragment 1: Apply pin mux but DISABLE kernel McASP driver */
+    /* Fragment 1: Apply pin mux via ocp device (always active) */
     fragment@1 {
+        target = <&ocp>;
+        __overlay__ {
+            /*
+             * Create a helper device under OCP to apply pin mux.
+             * Using "bone-pinmux-helper" compatible ensures pins are configured
+             * even though McASP driver is disabled.
+             */
+            i2s_pru_pinmux_helper {
+                compatible = "bone-pinmux-helper";
+                pinctrl-names = "default";
+                pinctrl-0 = <&i2s_pru_pins>;
+                status = "okay";
+            };
+        };
+    };
+
+    /* Fragment 2: Disable kernel McASP driver to allow PRU control */
+    fragment@2 {
         target = <&mcasp0>;
         __overlay__ {
-            /* Apply our pin configuration */
-            pinctrl-names = "default";
-            pinctrl-0 = <&i2s_pru_pins>;
-
             /*
              * CRITICAL: Disable the kernel McASP driver
              * This allows PRU to directly control McASP registers at 0x48038000
@@ -110,7 +124,7 @@
     };
 
     /*
-     * Note: No audio card fragment (fragment@2) is included.
+     * Note: No audio card fragment is included.
      * The PRU will:
      *   1. Configure McASP0 registers directly via OCP master port
      *   2. Set up I2S receive mode with proper clock dividers

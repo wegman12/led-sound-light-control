@@ -215,9 +215,9 @@ i2s: $(GEN_DIR) $(I2S_TARGET)
 	@echo "PRU1 I2S audio firmware build complete: $(I2S_TARGET)"
 
 # Compile I2S audio source to object file
-$(GEN_DIR)/pru1_audio_i2s.obj: pru1_audio_i2s.c resource_table_empty.h fft.h am335x_mcasp.h ../pru_shared_memory.h | $(GEN_DIR)
+$(GEN_DIR)/pru1_audio_i2s.obj: pru1_audio_i2s.c resource_table_empty.h fft.h am335x_mcasp.h pru_shared_memory.h | $(GEN_DIR)
 	@echo "Compiling pru1_audio_i2s.c..."
-	$(CC) $(INCLUDE) --include_path=.. $(CFLAGS) -c pru1_audio_i2s.c -o $(GEN_DIR)/pru1_audio_i2s.obj
+	$(CC) $(INCLUDE) $(CFLAGS) -c pru1_audio_i2s.c -o $(GEN_DIR)/pru1_audio_i2s.obj
 
 # Link I2S audio object files to create firmware
 $(I2S_TARGET): $(I2S_OBJECTS) $(LDFILE)
@@ -238,7 +238,8 @@ i2s-deploy-all:
 	@echo "Deploying PRU1 I2S audio firmware to $(DEPLOY_HOST)..."
 	@echo "Copying PRU source files to BeagleBone..."
 	@ssh $(DEPLOY_HOST) "mkdir -p $(DEPLOY_PATH)"
-	@scp -r *.c *.h *.cmd Makefile ../pru_shared_memory.h $(DEPLOY_HOST):$(DEPLOY_PATH)
+	@scp -r *.c *.h *.cmd Makefile $(DEPLOY_HOST):$(DEPLOY_PATH)
+	@scp ../pru_shared_memory.h $(DEPLOY_HOST):$(DEPLOY_PATH)
 	@echo "Building PRU1 I2S audio firmware on BeagleBone..."
 	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_PATH) && make clean && make i2s"
 	@echo "Installing and loading I2S audio firmware..."

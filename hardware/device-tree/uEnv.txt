@@ -17,7 +17,7 @@ enable_uboot_overlays=1
 ###
 ###Additional custom capes
 #uboot_overlay_addr4=custom-pins.dtbo
-uboot_overlay_addr4=BB-I2S-MIC-00A0.dtbo
+uboot_overlay_addr4=BB-I2S-PRU-00A0.dtbo  # PRU-controlled I2S (no kernel driver)
 uboot_overlay_addr5=BB-PRU-IR-00A0.dtbo
 uboot_overlay_addr6=BB-PWM-00A0.dtbo
 uboot_overlay_addr7=BB-PWM-PINS-00A0.dtbo
