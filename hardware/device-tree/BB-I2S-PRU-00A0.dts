@@ -1,0 +1,124 @@
+/*
+ * Device Tree Overlay for PRU-Controlled I2S MEMS Microphone
+ * BeagleBone Black - Pin Mux and Clock Configuration Only
+ *
+ * This overlay configures pins and enables the 24.576 MHz clock but does NOT
+ * enable the kernel McASP driver. The PRU directly controls McASP registers
+ * for ultra-low-latency audio capture.
+ *
+ * Hardware Required:
+ *   - INMP441 or SPH0645 I2S MEMS Microphone
+ *   - Jumper wire: P9_25 -> P9_28 (routes 24.576 MHz clock to McASP)
+ *
+ * Pins used:
+ *   P9_25 - CLKOUT2       (24.576 MHz clock OUTPUT - onboard oscillator)
+ *   P9_28 - McASP0_AHCLKR (24.576 MHz clock INPUT to McASP)
+ *   P9_29 - McASP0_FSX    (I2S Frame Sync / Word Select OUTPUT to mic)
+ *   P9_30 - McASP0_AXR0   (I2S Data INPUT from mic)
+ *   P9_31 - McASP0_ACLKX  (I2S Bit Clock OUTPUT to mic)
+ *
+ * Clock Strategy:
+ *   BeagleBone Black has a 24.576 MHz oscillator on-board (for HDMI audio).
+ *   This frequency is PERFECT for audio: 24.576 MHz / 512 = 48 kHz (exact).
+ *
+ *   Clock flow:
+ *   1. CLKOUT2 (P9_25) outputs 24.576 MHz from onboard oscillator
+ *   2. Jumper wire connects P9_25 -> P9_28
+ *   3. PRU configures McASP to use AHCLKR as master clock
+ *   4. PRU configures clock dividers for 48 kHz sample rate
+ *   5. PRU reads samples directly from McASP RBUF registers
+ *
+ * Differences from BB-I2S-MIC-00A0.dts:
+ *   - McASP kernel driver is DISABLED (status = "disabled")
+ *   - No ALSA audio card created
+ *   - PRU has exclusive control of McASP0 peripheral
+ *
+ * Sample rate: 48000 Hz (configured by PRU)
+ * Format: I2S (configured by PRU)
+ * Channels: 1 (Mono - left channel)
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,beaglebone-green";
+
+    /* Identification */
+    part-number = "BB-I2S-PRU";
+    version = "00A0";
+
+    /* Fragment 0: Pin mux configuration for I2S signals */
+    fragment@0 {
+        target = <&am33xx_pinmux>;
+        __overlay__ {
+            i2s_pru_pins: pinmux_i2s_pru_pins {
+                pinctrl-single,pins = <
+                    /*
+                     * Pin Mux Values:
+                     * Bits [2:0] = Mode (0-7)
+                     * Bit 3 = Pull disable (1 = no pull)
+                     * Bit 4 = Pull select (0 = pulldown, 1 = pullup)
+                     * Bit 5 = Input enable (1 = input, 0 = output)
+                     * Bit 6 = Slew rate (0 = fast, 1 = slow)
+                     *
+                     * 0x00 = Mode 0, Output, Pulldown, Fast
+                     * 0x03 = Mode 3, Output, Pulldown, Fast
+                     * 0x20 = Mode 0, Input, Pulldown, Fast
+                     * 0x30 = Mode 0, Input, Pullup, Fast
+                     */
+
+                    /* P9_25: CLKOUT2 - 24.576 MHz clock output from onboard oscillator */
+                    /* Mode 3 = clkout2, Output */
+                    0x1ac 0x03
+
+                    /* P9_28: McASP0_AHCLKR - High-frequency clock input (from P9_25 jumper) */
+                    /* Mode 0 = mcasp0_ahclkr, Input with pulldown */
+                    0x19c 0x20
+
+                    /* P9_29: McASP0_FSX - Frame sync (word select / LRCLK) output */
+                    /* Mode 0 = mcasp0_fsx, Output */
+                    0x194 0x00
+
+                    /* P9_30: McASP0_AXR0 - Serial data input from microphone */
+                    /* Mode 0 = mcasp0_axr0, Input with pulldown */
+                    0x198 0x20
+
+                    /* P9_31: McASP0_ACLKX - Bit clock (BCLK) output */
+                    /* Mode 0 = mcasp0_aclkx, Output */
+                    0x190 0x00
+                >;
+            };
+        };
+    };
+
+    /* Fragment 1: Apply pin mux but DISABLE kernel McASP driver */
+    fragment@1 {
+        target = <&mcasp0>;
+        __overlay__ {
+            /* Apply our pin configuration */
+            pinctrl-names = "default";
+            pinctrl-0 = <&i2s_pru_pins>;
+
+            /*
+             * CRITICAL: Disable the kernel McASP driver
+             * This allows PRU to directly control McASP registers at 0x48038000
+             * Without this, the kernel driver would conflict with PRU access
+             */
+            status = "disabled";
+        };
+    };
+
+    /*
+     * Note: No audio card fragment (fragment@2) is included.
+     * The PRU will:
+     *   1. Configure McASP0 registers directly via OCP master port
+     *   2. Set up I2S receive mode with proper clock dividers
+     *   3. Read samples from McASP RBUF registers
+     *   4. Perform FFT and frequency analysis
+     *
+     * McASP0 register base addresses (accessible from PRU):
+     *   - Configuration registers: 0x48038000
+     *   - Data/FIFO registers: 0x46000000
+     */
+};
