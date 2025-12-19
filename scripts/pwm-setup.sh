@@ -14,11 +14,11 @@ setup_pwm() {
         sleep 0.1
     fi
     
-    # Set a default period (20ms = 20000000ns, 50Hz - common for servos/LEDs)
+    # Set period to 20 kHz (50000ns = 50us)
     # Only set if period is 0
     current_period=$(cat ${channel_path}/period 2>/dev/null || echo "0")
     if [ "$current_period" -eq 0 ]; then
-        echo 200000 > ${channel_path}/period
+        echo 50000 > ${channel_path}/period
     fi
     
     # Set duty cycle to 0 (off by default)
@@ -32,12 +32,12 @@ setup_pwm() {
 sleep 2
 
 # Setup PWM channels
-# pwmchip0: ehrpwm1 (P9_14, P9_16)
-setup_pwm 0 0  # P9_14
-setup_pwm 0 1  # P9_16
-
 # pwmchip2: ehrpwm2 (P8_19, P8_13)
 setup_pwm 2 0  # P8_19
 setup_pwm 2 1  # P8_13
+
+# pwmchip4: ehrpwm0 or other PWM controller
+setup_pwm 4 0
+setup_pwm 4 1
 
 echo "PWM channels exported and enabled"

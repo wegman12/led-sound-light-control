@@ -9,7 +9,7 @@ DTS_FILES := $(addsuffix .dts, $(OVERLAYS))
 DTBO_FILES := $(addsuffix .dtbo, $(OVERLAYS))
 
 # Deployment settings
-DEPLOY_HOST ?= bbb2.wegman
+DEPLOY_HOST ?= bbb1.wegman
 FIRMWARE_DIR := /lib/firmware
 # Get kernel version from BeagleBone and construct overlay path
 KERNEL_VERSION := $(shell ssh $(DEPLOY_HOST) "uname -r" 2>/dev/null || echo "5.10.168-ti-r83")
@@ -155,7 +155,7 @@ deploy-driver:
 	@echo "  ssh $(DEPLOY_HOST) 'sudo reboot'"
 
 # Deploy both device tree and driver
-deploy-all: deploy-full deploy-driver
+deploy-all: deploy-full deploy-driver deploy-uenv
 	@echo ""
 	@echo "======================================"
 	@echo "Complete System Deployment Finished!"

@@ -3,10 +3,10 @@
  * BeagleBone Black - PRU0 Configuration
  *
  * Hardware Required:
- *   - IR receiver connected to P9_27
+ *   - IR receiver connected to P9_24
  *
  * Pins used:
- *   P9_27 - PRU0 R31 bit 5 (IR input from receiver)
+ *   P9_24 - PRU0 R31 bit 16 (IR input from receiver)
  *
  * This overlay only configures the pin mux for PRU input.
  * The PRU remoteproc subsystem is already enabled in the kernel.
@@ -15,6 +15,9 @@
  *   1. Load this overlay in /boot/uEnv.txt
  *   2. Deploy PRU firmware to /lib/firmware/am335x-pru0-fw
  *   3. Start PRU: echo 'start' > /sys/class/remoteproc/remoteproc1/state
+ *
+ * Note: P9_24 chosen instead of P9_27 to avoid interference from
+ *       adjacent I2S clock signals (P9_25-31 cluster).
  */
 
 /dts-v1/;
@@ -33,7 +36,7 @@
         __overlay__ {
             pru_ir_pins: pinmux_pru_ir_pins {
                 pinctrl-single,pins = <
-                    0x1a4 0x26  // P9_27: pru0_pru_r31_5 (Mode 5, INPUT | PULLDOWN)
+                    0x184 0x36  // P9_24: pru0_pru_r31_16 (Mode 6, INPUT | PULLUP)
                 >;
             };
         };

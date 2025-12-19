@@ -5,6 +5,11 @@
 GEN_DIR := gen
 SRC_DIR := .
 
+# Deployment settings
+DEPLOY_HOST ?= bbb2.wegman
+REMOTE_DIR := ~/led-sound-light-control/pru
+PRU_INSTALL_PATH := /lib/firmware/am335x-pru0-fw
+
 # TI PRU Compiler and Linker
 CC := clpru
 LD := clpru
@@ -43,7 +48,7 @@ TEST_OBJECT := $(GEN_DIR)/test_r31.obj
 TEST_TARGET := $(GEN_DIR)/test_r31.out
 
 # Phony targets
-.PHONY: all clean install help test
+.PHONY: all clean install help test deploy
 
 # Default target
 all: $(GEN_DIR) $(TARGET)
@@ -83,7 +88,7 @@ clean:
 	@rm -rf $(GEN_DIR)
 	@echo "Clean complete"
 
-# Install firmware to BeagleBone /lib/firmware
+# Install firmware to BeagleBone /lib/firmware (run on BeagleBone)
 install: $(TARGET)
 	@echo "Installing PRU firmware to /lib/firmware/am335x-pru0-fw..."
 	@sudo cp $(TARGET) /lib/firmware/am335x-pru0-fw
@@ -91,16 +96,57 @@ install: $(TARGET)
 	@echo "  echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc1/state"
 	@echo "  echo 'start' | sudo tee /sys/class/remoteproc/remoteproc1/state"
 
+# Deploy PRU firmware to BeagleBone (builds on target)
+deploy:
+	@echo "========================================"
+	@echo "Deploying PRU IR Detector Firmware"
+	@echo "========================================"
+	@echo ""
+	@echo "[1/5] Creating directory on $(DEPLOY_HOST)..."
+	@ssh $(DEPLOY_HOST) "mkdir -p $(REMOTE_DIR)"
+	@echo ""
+	@echo "[2/5] Copying source files to BeagleBone..."
+	@scp *.c *.h *.cmd Makefile README.md $(DEPLOY_HOST):$(REMOTE_DIR)/
+	@echo ""
+	@echo "[3/5] Building PRU firmware on BeagleBone..."
+	@ssh $(DEPLOY_HOST) "cd $(REMOTE_DIR) && make clean && make"
+	@echo ""
+	@echo "[4/5] Installing and loading firmware..."
+	@ssh $(DEPLOY_HOST) "\
+		echo 'Stopping PRU...' && \
+		(echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc1/state > /dev/null 2>&1 || true) && \
+		sleep 1 && \
+		echo 'Installing firmware...' && \
+		sudo cp $(REMOTE_DIR)/gen/pru0_ir_detector.out $(PRU_INSTALL_PATH) && \
+		echo 'Starting PRU...' && \
+		echo 'start' | sudo tee /sys/class/remoteproc/remoteproc1/state > /dev/null && \
+		sleep 1"
+	@echo ""
+	@echo "[5/5] Verifying PRU state..."
+	@ssh $(DEPLOY_HOST) "cat /sys/class/remoteproc/remoteproc1/state"
+	@echo ""
+	@echo "✓ PRU firmware deployed and loaded successfully!"
+	@echo ""
+	@echo "To verify operation:"
+	@echo "  ssh $(DEPLOY_HOST)"
+	@echo "  sudo dd if=/dev/mem bs=4 skip=\$$((0x4A311000/4)) count=7 2>/dev/null | od -An -t u4"
+	@echo "  (Check status field - should be non-zero if PRU is running)"
+
 # Help target
 help:
 	@echo "PRU IR Detector Firmware Build System"
 	@echo ""
 	@echo "Targets:"
-	@echo "  all     - Build PRU firmware (default)"
+	@echo "  all     - Build PRU firmware locally (requires clpru)"
+	@echo "  test    - Build test firmware (GPIO test)"
 	@echo "  clean   - Remove build artifacts"
-	@echo "  install - Install firmware to /lib/firmware (requires sudo)"
+	@echo "  install - Install firmware to /lib/firmware (run on BeagleBone)"
+	@echo "  deploy  - Copy source, build on BeagleBone, install and load (recommended)"
 	@echo "  help    - Show this help message"
 	@echo ""
-	@echo "Requirements:"
+	@echo "Deployment:"
+	@echo "  make deploy DEPLOY_HOST=bbb2.wegman  (default)"
+	@echo ""
+	@echo "Local Build Requirements:"
 	@echo "  - TI PRU Code Generation Tools (clpru)"
 	@echo "  - Install with: sudo apt-get install ti-pru-cgt-installer"

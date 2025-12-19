@@ -1,13 +1,16 @@
 /*
  * PRU0 IR Remote Detector Firmware
  *
- * Detects IR remote signals on P9_27 (PRU0 __R31 bit 5), decodes 34-bit NEC-like protocol,
+ * Detects IR remote signals on P9_24 (PRU0 __R31 bit 16), decodes 34-bit NEC-like protocol,
  * matches against 44 known button codes, and writes events to shared memory
  * ring buffer for consumption by Go application.
  *
- * IMPORTANT: P9_27 IR input is ACTIVE-LOW (pulled high by default)
+ * IMPORTANT: P9_24 IR input is ACTIVE-LOW (pulled high by default)
  *   - GPIO HIGH (1) = No signal (idle state)
  *   - GPIO LOW (0)  = Signal present (IR transmitting)
+ *
+ * Note: P9_24 chosen instead of P9_27 to avoid interference from
+ *       adjacent I2S clock signals (P9_25-31 cluster).
  *
  * Author: Generated with Claude Code
  * Target: BeagleBone Black PRU0 (AM335x)
@@ -106,11 +109,11 @@ struct button_event {
 };
 
 /* PRU Direct GPIO Access via __R31 register */
-/* P9_27 maps to PRU0 bit 5 - much faster and more reliable than memory-mapped GPIO */
+/* P9_24 maps to PRU0 bit 16 - much faster and more reliable than memory-mapped GPIO */
 /* No volatile tricks needed - __R31 is a hardware register designed for this */
 static inline uint32_t read_gpio(void) {
-    /* Read PRU0 input register bit 5 (P9_27) directly */
-    return (__R31 & 0x20) >> 5;
+    /* Read PRU0 input register bit 16 (P9_24) directly */
+    return (__R31 & 0x10000) >> 16;
 }
 
 /* PRU Cycle Counter Functions */
@@ -413,7 +416,7 @@ static void write_button_event(uint8_t button_type) {
 
 /*
  * ORIGINAL DETECTION LOGIC - NOW USING PRU DIRECT GPIO
- * Migrated to P9_27 (PRU0 __R31 bit 5) for direct hardware register access
+ * Migrated to P9_24 (PRU0 __R31 bit 16) for direct hardware register access
  */
 #if 1
 static void run_ir_detection_loop(void) {

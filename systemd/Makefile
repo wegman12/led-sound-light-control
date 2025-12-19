@@ -4,21 +4,26 @@
 # Deployment configuration
 DEPLOY_HOST ?= bbb1.wegman
 SYSTEMD_DIR = /etc/systemd/system
+SCRIPTS_DIR = ../scripts
+SCRIPTS_INSTALL_DIR = /usr/local/bin
 
 # Service files to deploy
 SERVICES = \
-	enable-remote-detection-pru.service \
-	enable-audio-pru.service \
+	remote-detection-pru.service \
+	audio-pru.service \
 	led-sound-light-control.service \
-	pwm-setup.service \
-	gpio-ir-setup.service
+	pwm-setup.service
+
+# Script files to deploy
+SCRIPTS = \
+	pwm-setup.sh
 
 .PHONY: all deploy install enable disable start stop restart status clean help
 
 # Default target
 all: help
 
-# Deploy service files to target device
+# Deploy service files and scripts to target device
 deploy:
 	@echo "Deploying systemd services to $(DEPLOY_HOST)..."
 	@for service in $(SERVICES); do \
@@ -26,9 +31,15 @@ deploy:
 		scp $$service $(DEPLOY_HOST):/tmp/$$service; \
 		ssh $(DEPLOY_HOST) "sudo mv /tmp/$$service $(SYSTEMD_DIR)/$$service && sudo chmod 644 $(SYSTEMD_DIR)/$$service"; \
 	done
+	@echo "Deploying scripts to $(DEPLOY_HOST)..."
+	@for script in $(SCRIPTS); do \
+		echo "Copying $$script..."; \
+		scp $(SCRIPTS_DIR)/$$script $(DEPLOY_HOST):/tmp/$$script; \
+		ssh $(DEPLOY_HOST) "sudo mv /tmp/$$script $(SCRIPTS_INSTALL_DIR)/$$script && sudo chmod 755 $(SCRIPTS_INSTALL_DIR)/$$script"; \
+	done
 	@echo "Reloading systemd daemon..."
 	@ssh $(DEPLOY_HOST) "sudo systemctl daemon-reload"
-	@echo "Service files deployed successfully"
+	@echo "Service files and scripts deployed successfully"
 
 # Install and enable services (run after deploy)
 install: deploy
@@ -60,10 +71,9 @@ disable:
 # Start services
 start:
 	@echo "Starting services on $(DEPLOY_HOST)..."
-	@ssh $(DEPLOY_HOST) "sudo systemctl start enable-remote-detection-pru.service"
-	@ssh $(DEPLOY_HOST) "sudo systemctl start enable-audio-pru.service"
 	@ssh $(DEPLOY_HOST) "sudo systemctl start pwm-setup.service"
-	@ssh $(DEPLOY_HOST) "sudo systemctl start gpio-ir-setup.service"
+	@ssh $(DEPLOY_HOST) "sudo systemctl start remote-detection-pru.service"
+	@ssh $(DEPLOY_HOST) "sudo systemctl start audio-pru.service"
 	@ssh $(DEPLOY_HOST) "sudo systemctl start led-sound-light-control.service"
 	@echo "Services started"
 
@@ -71,8 +81,8 @@ start:
 stop:
 	@echo "Stopping services on $(DEPLOY_HOST)..."
 	@ssh $(DEPLOY_HOST) "sudo systemctl stop led-sound-light-control.service" || true
-	@ssh $(DEPLOY_HOST) "sudo systemctl stop enable-remote-detection-pru.service" || true
-	@ssh $(DEPLOY_HOST) "sudo systemctl stop enable-audio-pru.service" || true
+	@ssh $(DEPLOY_HOST) "sudo systemctl stop remote-detection-pru.service" || true
+	@ssh $(DEPLOY_HOST) "sudo systemctl stop audio-pru.service" || true
 	@echo "Services stopped"
 
 # Restart services
@@ -82,11 +92,14 @@ restart: stop start
 status:
 	@echo "Checking service status on $(DEPLOY_HOST)..."
 	@echo ""
+	@echo "=== PWM Setup Service ==="
+	@ssh $(DEPLOY_HOST) "sudo systemctl status pwm-setup.service --no-pager" || true
+	@echo ""
 	@echo "=== PRU0 Remote Detection Service ==="
-	@ssh $(DEPLOY_HOST) "sudo systemctl status enable-remote-detection-pru.service --no-pager" || true
+	@ssh $(DEPLOY_HOST) "sudo systemctl status remote-detection-pru.service --no-pager" || true
 	@echo ""
 	@echo "=== PRU1 Audio Service ==="
-	@ssh $(DEPLOY_HOST) "sudo systemctl status enable-audio-pru.service --no-pager" || true
+	@ssh $(DEPLOY_HOST) "sudo systemctl status audio-pru.service --no-pager" || true
 	@echo ""
 	@echo "=== Main Application Service ==="
 	@ssh $(DEPLOY_HOST) "sudo systemctl status led-sound-light-control.service --no-pager" || true
