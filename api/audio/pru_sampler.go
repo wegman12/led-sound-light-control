@@ -19,6 +19,14 @@ const (
 	audioControlBlockOffset = 0x0900 // After PRU0 control block (was 0x2000)
 
 	devMem = "/dev/mem"
+
+	// PRU1 Audio Firmware Status Codes
+	statusADCRunning = 0x41554431 // "AUD1" - ADC audio firmware (40 kHz)
+	statusI2SRunning = 0x49325331 // "I2S1" - I2S/McASP firmware (48 kHz)
+
+	// Sample rates for each firmware type
+	sampleRateADC = 40000 // ADC firmware: 40 kHz
+	sampleRateI2S = 48000 // I2S firmware: 48 kHz
 )
 
 // AudioControlBlock matches the C struct in PRU1 audio firmware
@@ -186,17 +194,23 @@ func (ps *PRUSampler) GetStatus() (*PRUStatus, error) {
 
 	ctrl := *ps.controlBlock
 
+	// Detect firmware type and sample rate from status code
+	sampleRate := uint32(sampleRateADC) // Default to ADC
+	if ctrl.Status == statusI2SRunning {
+		sampleRate = sampleRateI2S
+	}
+
 	status := &PRUStatus{
 		Status:          ctrl.Status,
 		TotalSamples:    ctrl.TotalSamples,
 		BufferCount:     ctrl.BufferCount,
-		ADCTimeouts:     ctrl.ADCTimeouts,
+		ADCTimeouts:     ctrl.ADCTimeouts, // Also used for McASP errors in I2S mode
 		FFTSkipped:      ctrl.FFTSkipped,
 		FFTEnabled:      ctrl.FFTEnable == 1,
 		BassMaxHz:       ctrl.BassMaxHz,
 		MidLowMaxHz:     ctrl.MidLowMaxHz,
 		MidHighMaxHz:    ctrl.MidHighMaxHz,
-		SampleRateHz:    40000, // Fixed at 40 kHz
+		SampleRateHz:    sampleRate,
 	}
 
 	return status, nil

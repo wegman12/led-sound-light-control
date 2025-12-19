@@ -24,16 +24,16 @@ type SoundProfile struct {
 
 // PRUStatus represents the PRU1 audio sampling status
 type PRUStatus struct {
-	Status        uint32 `json:"status"`          // PRU status code
+	Status        uint32 `json:"status"`          // PRU status code (0x41554431="AUD1", 0x49325331="I2S1")
 	TotalSamples  uint32 `json:"total_samples"`   // Total samples collected
 	BufferCount   uint32 `json:"buffer_count"`    // Number of buffers processed
-	ADCTimeouts   uint32 `json:"adc_timeouts"`    // ADC timeout errors
+	ADCTimeouts   uint32 `json:"adc_timeouts"`    // ADC timeouts or McASP errors (mode dependent)
 	FFTSkipped    uint32 `json:"fft_skipped"`     // FFTs skipped due to timing
 	FFTEnabled    bool   `json:"fft_enabled"`     // FFT processing enabled
 	BassMaxHz     uint32 `json:"bass_max_hz"`     // Bass frequency boundary
 	MidLowMaxHz   uint32 `json:"mid_low_max_hz"`  // Mid-low frequency boundary
 	MidHighMaxHz  uint32 `json:"mid_high_max_hz"` // Mid-high frequency boundary
-	SampleRateHz  uint32 `json:"sample_rate_hz"`  // Sampling rate (40 kHz)
+	SampleRateHz  uint32 `json:"sample_rate_hz"`  // Sampling rate (40 kHz ADC, 48 kHz I2S)
 }
 
 // FrequencyBands represents configurable frequency band boundaries
