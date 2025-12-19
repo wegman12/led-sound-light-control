@@ -34,12 +34,19 @@ INCLUDE := --include_path=$(SRC_DIR) \
 # Linker command file
 LDFILE := am335x_pru.cmd
 
-# Source files for audio processing firmware
+# Source files for audio processing firmware (ADC version)
 SOURCES := pru1_audio.c fft.c
 OBJECTS := $(GEN_DIR)/pru1_audio.obj $(GEN_DIR)/fft.obj
 
-# Output firmware for audio processing
+# Output firmware for audio processing (ADC)
 TARGET := $(GEN_DIR)/pru1_audio.out
+
+# Source files for I2S/McASP audio firmware
+I2S_SOURCES := pru1_audio_i2s.c fft.c
+I2S_OBJECTS := $(GEN_DIR)/pru1_audio_i2s.obj $(GEN_DIR)/fft.obj
+
+# Output firmware for I2S audio processing
+I2S_TARGET := $(GEN_DIR)/pru1_audio_i2s.out
 
 # Source files for raw capture firmware (no FFT)
 RAW_SOURCES := pru1_raw_capture.c
@@ -59,7 +66,7 @@ UTIL_BINARY_BBB := audio-util-bbb
 
 # Phony targets
 .PHONY: all clean install help build-util build-util-bbb deploy-util deploy-all \
-        raw raw-install raw-deploy-all
+        raw raw-install raw-deploy-all i2s i2s-install i2s-deploy-all
 
 # Default target
 all: $(GEN_DIR) $(TARGET)
@@ -201,15 +208,74 @@ raw-deploy-all:
 	@echo ""
 	@echo "The PRU is now running raw capture mode. Use the 'record-pru-raw' CLI command to capture samples."
 
+# === I2S/McASP Audio Firmware Targets ===
+
+# Build I2S audio firmware
+i2s: $(GEN_DIR) $(I2S_TARGET)
+	@echo "PRU1 I2S audio firmware build complete: $(I2S_TARGET)"
+
+# Compile I2S audio source to object file
+$(GEN_DIR)/pru1_audio_i2s.obj: pru1_audio_i2s.c resource_table_empty.h fft.h am335x_mcasp.h ../pru_shared_memory.h | $(GEN_DIR)
+	@echo "Compiling pru1_audio_i2s.c..."
+	$(CC) $(INCLUDE) --include_path=.. $(CFLAGS) -c pru1_audio_i2s.c -o $(GEN_DIR)/pru1_audio_i2s.obj
+
+# Link I2S audio object files to create firmware
+$(I2S_TARGET): $(I2S_OBJECTS) $(LDFILE)
+	@echo "Linking PRU1 I2S audio firmware..."
+	$(LD) $(CFLAGS) -z $(LIB_INCLUDE) $(LFLAGS) -o $(I2S_TARGET) $(I2S_OBJECTS) \
+		-m $(GEN_DIR)/pru1_audio_i2s.map $(LDFILE) --library=libc.a
+
+# Install I2S audio firmware to BeagleBone /lib/firmware
+i2s-install: $(I2S_TARGET)
+	@echo "Installing PRU1 I2S audio firmware to /lib/firmware/am335x-pru1-fw..."
+	@sudo cp $(I2S_TARGET) /lib/firmware/am335x-pru1-fw
+	@echo "I2S audio firmware installed. Reload PRU1 with:"
+	@echo "  echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc2/state"
+	@echo "  echo 'start' | sudo tee /sys/class/remoteproc/remoteproc2/state"
+
+# Deploy I2S audio firmware to BeagleBone (builds on target)
+i2s-deploy-all:
+	@echo "Deploying PRU1 I2S audio firmware to $(DEPLOY_HOST)..."
+	@echo "Copying PRU source files to BeagleBone..."
+	@ssh $(DEPLOY_HOST) "mkdir -p $(DEPLOY_PATH)"
+	@scp -r *.c *.h *.cmd Makefile ../pru_shared_memory.h $(DEPLOY_HOST):$(DEPLOY_PATH)
+	@echo "Building PRU1 I2S audio firmware on BeagleBone..."
+	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_PATH) && make clean && make i2s"
+	@echo "Installing and loading I2S audio firmware..."
+	@ssh $(DEPLOY_HOST) "sudo cp $(DEPLOY_PATH)gen/pru1_audio_i2s.out /lib/firmware/am335x-pru1-fw && \
+	                     echo 'Stopping PRU1 (if running)...' && \
+	                     (echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc2/state > /dev/null 2>&1 || true) && \
+	                     sleep 1 && \
+	                     echo 'Starting PRU1...' && \
+	                     echo 'start' | sudo tee /sys/class/remoteproc/remoteproc2/state > /dev/null && \
+	                     sleep 1 && \
+	                     echo 'Verifying PRU1 state...' && \
+	                     cat /sys/class/remoteproc/remoteproc2/state"
+	@echo ""
+	@$(MAKE) deploy-util
+	@echo ""
+	@echo "===================================="
+	@echo "I2S Audio Deployment complete!"
+	@echo "===================================="
+	@echo "PRU1 I2S firmware: $(DEPLOY_PATH)gen/pru1_audio_i2s.out -> /lib/firmware/am335x-pru1-fw"
+	@echo "Utility: $(DEPLOY_PATH)$(UTIL_BINARY)"
+	@echo ""
+	@echo "To test on BeagleBone:"
+	@echo "  ssh $(DEPLOY_HOST)"
+	@echo "  cd $(DEPLOY_PATH)"
+	@echo "  sudo ./$(UTIL_BINARY) test"
+
 # Help target
 help:
 	@echo "PRU1 Audio Sampling Build System"
 	@echo ""
 	@echo "Firmware Targets:"
-	@echo "  all         - Build PRU1 audio processing firmware (default)"
+	@echo "  all         - Build PRU1 ADC audio processing firmware (default)"
+	@echo "  i2s         - Build PRU1 I2S/McASP audio firmware (48 kHz MEMS mic)"
 	@echo "  raw         - Build PRU1 raw capture firmware (for parameter testing)"
 	@echo "  clean       - Remove all build artifacts (firmware + utility)"
-	@echo "  install     - Install audio firmware to /lib/firmware (requires sudo)"
+	@echo "  install     - Install ADC audio firmware to /lib/firmware (requires sudo)"
+	@echo "  i2s-install - Install I2S audio firmware to /lib/firmware (requires sudo)"
 	@echo "  raw-install - Install raw capture firmware to /lib/firmware (requires sudo)"
 	@echo ""
 	@echo "Utility Targets:"
@@ -218,7 +284,8 @@ help:
 	@echo "  deploy-util    - Deploy utility to BeagleBone"
 	@echo ""
 	@echo "Deployment Targets:"
-	@echo "  deploy-all     - Deploy audio firmware and utility to BeagleBone (recommended)"
+	@echo "  deploy-all     - Deploy ADC audio firmware and utility to BeagleBone"
+	@echo "  i2s-deploy-all - Deploy I2S audio firmware and utility to BeagleBone (recommended)"
 	@echo "  raw-deploy-all - Deploy raw capture firmware to BeagleBone"
 	@echo ""
 	@echo "Help:"
@@ -229,8 +296,15 @@ help:
 	@echo "  - Go 1.23+ for utility"
 	@echo "  - Install clpru with: sudo apt-get install ti-pru-cgt-installer"
 	@echo ""
+	@echo "I2S Audio Workflow (MEMS Microphone):"
+	@echo "  1. Connect INMP441/SPH0645 microphone to P9 header"
+	@echo "  2. Add jumper wire: P9_25 -> P9_28 (clock routing)"
+	@echo "  3. Load device tree overlay: BB-I2S-PRU-00A0"
+	@echo "  4. make i2s-deploy-all          # Deploy I2S firmware"
+	@echo "  5. sudo ./audio-util test       # Verify operation"
+	@echo ""
 	@echo "Raw Capture Workflow:"
 	@echo "  1. make raw-deploy-all          # Deploy raw capture firmware"
 	@echo "  2. record-pru-raw -o samples.bin # Capture raw audio samples"
 	@echo "  3. analyze-audio-params samples.bin # Find optimal parameters"
-	@echo "  4. make deploy-all              # Switch back to audio firmware"
+	@echo "  4. make i2s-deploy-all          # Switch back to I2S audio firmware"
