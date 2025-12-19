@@ -15,10 +15,11 @@
 #include <sys_tscAdcSs.h>
 #include "resource_table_empty.h"
 #include "fft.h"
+#include "../pru_shared_memory.h"
 
-/* Memory Layout */
-#define PRU_SHARED_MEM      0x00010000
-#define AUDIO_CONTROL_BLOCK 0x00002000  /* Offset 8KB in shared memory (after PRU0's 4KB) */
+/* Memory Layout - uses shared header for consistency with PRU0 */
+#define PRU_SHARED_MEM      PRU_SHARED_MEM_BASE
+#define AUDIO_CONTROL_BLOCK PRU1_AUDIO_CONTROL_OFFSET
 
 /* PRU1 Local DRAM - Double Buffer Layout */
 #define BUFFER_SIZE         1024        /* Samples per buffer (power of 2) */
