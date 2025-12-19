@@ -16,32 +16,79 @@ const (
 	devMem           = "/dev/mem"
 )
 
-// audioControlBlock matches the C struct in PRU1 firmware
+// audioControlBlock matches the C struct in PRU1 firmware (both ADC and I2S)
 type audioControlBlock struct {
-	Status    uint32
-	Counter   uint32
-	ToggleBit uint32
-	Reserved  [13]uint32 // 64 bytes total
+	// Configuration section (written by host)
+	FFTEnable           uint32
+	BassMaxHz           uint32
+	MidLowMaxHz         uint32
+	MidHighMaxHz        uint32
+	SmoothingAlphaX1000 uint32
+
+	// Status section (written by PRU)
+	Status          uint32
+	TotalSamples    uint32
+	BufferCount     uint32
+	CurrentBuffer   uint32
+	SamplesInBuffer uint32
+	ADCTimeouts     uint32 // Also McASP errors in I2S mode
+	MissedSamples   uint32
+	LastSample      uint32
+	MinSample       uint32
+	MaxSample       uint32
+	FFTCount        uint32
+	FFTTimeCycles   uint32
+	FFTSkipped      uint32
+	Bass            uint32
+	MidLow          uint32
+	MidHigh         uint32
+	Treble          uint32
+	BassAvg         uint32
+	MidLowAvg       uint32
+	MidHighAvg      uint32
+	TrebleAvg       uint32
 }
 
 var testCmd = &cobra.Command{
 	Use:   "test",
-	Short: "Test PRU1 basic operation",
-	Long: `Monitor PRU1 status by reading the toggle bit that flips every second.
+	Short: "Test PRU1 audio operation",
+	Long: `Monitor PRU1 audio status and verify operation.
 
 This command verifies that:
   - PRU1 firmware is loaded and running
   - Shared memory is accessible
-  - PRU1 can write to shared memory
-  - Go application can read from shared memory
+  - Audio samples are being collected
+  - FFT processing is operational
 
-The command will display the toggle bit value and counter every second.
+Supports both ADC firmware (40 kHz) and I2S firmware (48 kHz).
 Press Ctrl+C to exit.`,
 	Run: runTest,
 }
 
 func init() {
 	rootCmd.AddCommand(testCmd)
+}
+
+// decodeStatus returns firmware mode and description from status code
+func decodeStatus(status uint32) (mode string, desc string, sampleRate uint32) {
+	switch status {
+	case statusI2SRunning:
+		return "I2S", "I2S/McASP firmware (48 kHz)", sampleRateI2S
+	case statusADCRunning:
+		return "ADC", "ADC audio firmware (40 kHz)", sampleRateADC
+	case 0x4D435350: // "MCSP"
+		return "I2S", "McASP initializing", sampleRateI2S
+	case 0x53414D50: // "SAMP"
+		return "I2S", "Sampling active", sampleRateI2S
+	case 0x46465450: // "FFTP"
+		return "I2S", "FFT processing", sampleRateI2S
+	case 0x45525221: // "ERR!"
+		return "ERR", "Error occurred", 0
+	case 0:
+		return "OFF", "Not running", 0
+	default:
+		return "UNK", fmt.Sprintf("Unknown (0x%08X)", status), 0
+	}
 }
 
 func runTest(cmd *cobra.Command, args []string) {
@@ -79,55 +126,74 @@ func runTest(cmd *cobra.Command, args []string) {
 	if controlBlock.Status == 0 {
 		fmt.Fprintln(os.Stderr, "Error: PRU1 firmware not running (status=0)")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Load firmware with:")
-		fmt.Fprintln(os.Stderr, "  sudo cp pru/audio/gen/pru1_audio.out /lib/firmware/am335x-pru1-fw")
-		fmt.Fprintln(os.Stderr, "  echo 'start' | sudo tee /sys/class/remoteproc/remoteproc2/state")
+		fmt.Fprintln(os.Stderr, "Load I2S firmware with:")
+		fmt.Fprintln(os.Stderr, "  cd pru/audio && make i2s-deploy-all")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Or ADC firmware with:")
+		fmt.Fprintln(os.Stderr, "  cd pru/audio && make deploy-all")
 		os.Exit(1)
 	}
 
-	fmt.Printf("PRU1 Status: 0x%08X (", controlBlock.Status)
-	// Print status as ASCII if printable
-	for i := 0; i < 4; i++ {
-		b := byte(controlBlock.Status >> (i * 8))
-		if b >= 32 && b <= 126 {
-			fmt.Printf("%c", b)
-		} else {
-			fmt.Printf(".")
-		}
+	// Decode firmware mode
+	mode, desc, sampleRate := decodeStatus(controlBlock.Status)
+
+	fmt.Printf("Status:      0x%08X (%s)\n", controlBlock.Status, desc)
+	fmt.Printf("Mode:        %s\n", mode)
+	if sampleRate > 0 {
+		fmt.Printf("Sample Rate: %d Hz\n", sampleRate)
 	}
-	fmt.Println(")")
+	fmt.Printf("FFT Enabled: %v\n", controlBlock.FFTEnable == 1)
+	fmt.Printf("Freq Bands:  Bass<%d Hz, MidLow<%d Hz, MidHigh<%d Hz\n",
+		controlBlock.BassMaxHz, controlBlock.MidLowMaxHz, controlBlock.MidHighMaxHz)
 	fmt.Println()
-	fmt.Println("Monitoring PRU1 toggle bit (Ctrl+C to exit)...")
+	fmt.Println("Monitoring audio samples (Ctrl+C to exit)...")
 	fmt.Println()
 
-	lastToggle := controlBlock.ToggleBit
-	lastCounter := controlBlock.Counter
+	lastSamples := controlBlock.TotalSamples
+	lastFFTCount := controlBlock.FFTCount
+	lastTime := time.Now()
 
 	for {
-		currentToggle := controlBlock.ToggleBit
-		currentCounter := controlBlock.Counter
+		time.Sleep(1 * time.Second)
+
+		currentSamples := controlBlock.TotalSamples
+		currentFFTCount := controlBlock.FFTCount
+		currentTime := time.Now()
+
+		elapsed := currentTime.Sub(lastTime).Seconds()
+
+		// Calculate rates
+		sampleDelta := currentSamples - lastSamples
+		fftDelta := currentFFTCount - lastFFTCount
+
+		sampleRateActual := float64(sampleDelta) / elapsed
+		fftRate := float64(fftDelta) / elapsed
 
 		// Display current state
-		timestamp := time.Now().Format("15:04:05")
-		fmt.Printf("[%s] Counter: %5d | Toggle: %d", timestamp, currentCounter, currentToggle)
+		timestamp := currentTime.Format("15:04:05")
+		fmt.Printf("[%s] Samples: %8d (+%5d) | FFTs: %5d (+%2d) | Rate: %.0f Hz | FFT/s: %.1f\n",
+			timestamp, currentSamples, sampleDelta, currentFFTCount, fftDelta, sampleRateActual, fftRate)
 
-		// Check if toggle changed
-		if currentToggle != lastToggle {
-			fmt.Print(" ✓ TOGGLED")
+		// Show frequency bands every 5 seconds
+		if int(currentTime.Unix())%5 == 0 {
+			fmt.Printf("           Bass: %6d | MidLow: %6d | MidHigh: %6d | Treble: %6d\n",
+				controlBlock.Bass, controlBlock.MidLow, controlBlock.MidHigh, controlBlock.Treble)
 		}
 
-		// Check if counter incremented
-		if currentCounter != lastCounter {
-			delta := currentCounter - lastCounter
-			fmt.Printf(" (+%d)", delta)
+		// Check for errors
+		if controlBlock.ADCTimeouts > 0 {
+			if mode == "I2S" {
+				fmt.Printf("           WARNING: %d McASP errors\n", controlBlock.ADCTimeouts)
+			} else {
+				fmt.Printf("           WARNING: %d ADC timeouts\n", controlBlock.ADCTimeouts)
+			}
+		}
+		if controlBlock.MissedSamples > 0 {
+			fmt.Printf("           WARNING: %d missed samples\n", controlBlock.MissedSamples)
 		}
 
-		fmt.Println()
-
-		lastToggle = currentToggle
-		lastCounter = currentCounter
-
-		// Wait 1 second
-		time.Sleep(1 * time.Second)
+		lastSamples = currentSamples
+		lastFFTCount = currentFFTCount
+		lastTime = currentTime
 	}
 }
