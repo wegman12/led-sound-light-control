@@ -7,8 +7,7 @@ import FlashPage from '../pages/FlashPage';
 import FadePage from '../pages/FadePage';
 import ShimmerPage from '../pages/ShimmerPage';
 import AudioLightsPage from '../pages/AudioLightsPage';
-import AudioVisualizerPage from '../pages/AudioVisualizerPage';
-import { AudioTuningPage } from '../pages/AudioTuningPage';
+import { AudioConfigurationPage } from '../pages/AudioConfigurationPage';
 
 export function AppRoutes() {
   return (
@@ -21,8 +20,10 @@ export function AppRoutes() {
           <Route path="/fade" element={<FadePage />} />
           <Route path="/shimmer" element={<ShimmerPage />} />
           <Route path="/audio-lights" element={<AudioLightsPage />} />
-          <Route path="/audio-visualizer" element={<AudioVisualizerPage />} />
-          <Route path="/audio-tuning" element={<AudioTuningPage />} />
+          <Route path="/audio-configuration" element={<AudioConfigurationPage />} />
+          {/* Redirects from old routes */}
+          <Route path="/audio-visualizer" element={<Navigate to="/audio-configuration" replace />} />
+          <Route path="/audio-tuning" element={<Navigate to="/audio-configuration" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
