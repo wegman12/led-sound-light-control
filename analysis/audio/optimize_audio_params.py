@@ -2,7 +2,7 @@
 """
 Audio Parameter Optimization Script
 
-Loads raw ADC samples captured from PRU and performs offline FFT analysis
+Loads raw I2S samples captured from PRU and performs offline FFT analysis
 with different parameter combinations to find optimal settings for LED control.
 
 Usage:
@@ -41,7 +41,7 @@ except ImportError:
 @dataclass
 class AudioConfig:
     """Configuration for audio processing"""
-    sample_rate: int = 40000  # Hz
+    sample_rate: int = 32000  # Hz (I2S actual rate ~32 kHz)
     fft_size: int = 1024
     window_type: str = "hann"
     smoothing_alpha: float = 0.7
@@ -93,24 +93,24 @@ class AudioMetrics:
 
 def load_raw_samples(filepath: Path) -> np.ndarray:
     """
-    Load raw ADC samples from binary file.
+    Load raw I2S samples from binary file.
 
-    Format: Little-endian uint16 values (12-bit ADC data in 16-bit words)
+    Format: Little-endian int32 values (24-bit I2S data sign-extended to 32 bits)
 
     Args:
         filepath: Path to binary file
 
     Returns:
-        numpy array of uint16 samples
+        numpy array of int32 samples
     """
     with open(filepath, 'rb') as f:
         data = f.read()
 
-    # Unpack as little-endian uint16
-    sample_count = len(data) // 2
-    samples = struct.unpack(f'<{sample_count}H', data)
+    # Unpack as little-endian int32
+    sample_count = len(data) // 4
+    samples = struct.unpack(f'<{sample_count}i', data)
 
-    return np.array(samples, dtype=np.uint16)
+    return np.array(samples, dtype=np.int32)
 
 
 def apply_window(signal: np.ndarray, window_type: str) -> np.ndarray:
@@ -472,13 +472,13 @@ def generate_report(results: List[AudioMetrics], output_dir: Path):
                f"MidHigh={best.midhigh_cv:.1f}%, Treble={best.treble_cv:.1f}%\n\n")
 
         f.write("To apply these settings to PRU firmware:\n")
-        f.write(f"  1. Update pru/audio/pru1_audio.c:\n")
+        f.write(f"  1. Update pru/audio/pru1_audio_i2s.c:\n")
         f.write(f"     - BASS_MAX_HZ = {best.config.bass_max}\n")
         f.write(f"     - MIDLOW_MAX_HZ = {best.config.midlow_max}\n")
         f.write(f"     - MIDHIGH_MAX_HZ = {best.config.midhigh_max}\n")
         f.write(f"     - smoothing_alpha_x1000 = {int(best.config.smoothing_alpha * 1000)}\n")
         f.write(f"     - Window function: {best.config.window_type}\n")
-        f.write(f"  2. Rebuild and deploy: cd pru/audio && make deploy-all\n\n")
+        f.write(f"  2. Rebuild and deploy: cd pru/audio && make i2s-deploy-all\n\n")
 
     print(f"Report saved to: {report_path}")
 
@@ -599,12 +599,17 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
-  # Capture samples first:
-  record-pru-raw -o baseline.bin -t 30s
-  # (play music at loud volume)
-  record-pru-raw -o music.bin -t 30s
+  # Deploy raw I2S capture firmware first:
+  cd pru/audio && make i2s-raw-deploy-all
 
-  # Then optimize:
+  # Capture samples on BeagleBone:
+  ssh bbb1.wegman
+  cd ~/led-sound-light-control
+  sudo ./raw_i2s_capture 10 baseline.bin    # 10 seconds of silence
+  sudo ./raw_i2s_capture 30 music.bin       # 30 seconds of music
+
+  # Copy back and optimize:
+  scp bbb1.wegman:~/led-sound-light-control/*.bin .
   python optimize_audio_params.py baseline.bin music.bin
 
   # Or specify output directory:
@@ -629,13 +634,14 @@ Examples:
     print()
 
     # Load samples
+    sample_rate = 32000  # I2S actual rate
     print(f"Loading baseline samples from: {args.baseline_file}")
     baseline_samples = load_raw_samples(args.baseline_file)
-    print(f"  Loaded {len(baseline_samples)} samples ({len(baseline_samples) / 40000:.2f} seconds)")
+    print(f"  Loaded {len(baseline_samples)} samples ({len(baseline_samples) / sample_rate:.2f} seconds)")
 
     print(f"\nLoading music samples from: {args.music_file}")
     music_samples = load_raw_samples(args.music_file)
-    print(f"  Loaded {len(music_samples)} samples ({len(music_samples) / 40000:.2f} seconds)")
+    print(f"  Loaded {len(music_samples)} samples ({len(music_samples) / sample_rate:.2f} seconds)")
 
     # Run parameter sweep
     results = parameter_sweep(baseline_samples, music_samples, args.output)
@@ -651,7 +657,7 @@ Examples:
     print("\nNext steps:")
     print("  1. Review optimization_report.txt for recommended settings")
     print("  2. Update PRU firmware with optimal parameters")
-    print("  3. Rebuild and deploy: cd pru/audio && make deploy-all")
+    print("  3. Rebuild and deploy: cd pru/audio && make i2s-deploy-all")
     print()
 
 

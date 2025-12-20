@@ -48,12 +48,19 @@ I2S_OBJECTS := $(GEN_DIR)/pru1_audio_i2s.obj $(GEN_DIR)/fft.obj
 # Output firmware for I2S audio processing
 I2S_TARGET := $(GEN_DIR)/pru1_audio_i2s.out
 
-# Source files for raw capture firmware (no FFT)
+# Source files for raw capture firmware (ADC, no FFT)
 RAW_SOURCES := pru1_raw_capture.c
 RAW_OBJECTS := $(GEN_DIR)/pru1_raw_capture.obj
 
-# Output firmware for raw capture
+# Output firmware for raw capture (ADC)
 RAW_TARGET := $(GEN_DIR)/pru1_raw_capture.out
+
+# Source files for raw I2S capture firmware (no FFT)
+I2S_RAW_SOURCES := pru1_raw_capture_i2s.c
+I2S_RAW_OBJECTS := $(GEN_DIR)/pru1_raw_capture_i2s.obj
+
+# Output firmware for raw I2S capture
+I2S_RAW_TARGET := $(GEN_DIR)/pru1_raw_capture_i2s.out
 
 # Go parameters
 GOCMD := go
@@ -66,7 +73,8 @@ UTIL_BINARY_BBB := audio-util-bbb
 
 # Phony targets
 .PHONY: all clean install help build-util build-util-bbb deploy-util deploy-all \
-        raw raw-install raw-deploy-all i2s i2s-install i2s-deploy-all
+        raw raw-install raw-deploy-all i2s i2s-install i2s-deploy-all \
+        i2s-raw i2s-raw-install i2s-raw-deploy-all
 
 # Default target
 all: $(GEN_DIR) $(TARGET)
@@ -266,18 +274,83 @@ i2s-deploy-all:
 	@echo "  cd $(DEPLOY_PATH)"
 	@echo "  sudo ./$(UTIL_BINARY) test"
 
+# === Raw I2S Capture Firmware Targets ===
+
+# Build raw I2S capture firmware
+i2s-raw: $(GEN_DIR) $(I2S_RAW_TARGET)
+	@echo "PRU1 raw I2S capture firmware build complete: $(I2S_RAW_TARGET)"
+
+# Compile raw I2S capture source to object file
+$(GEN_DIR)/pru1_raw_capture_i2s.obj: pru1_raw_capture_i2s.c resource_table_empty.h am335x_mcasp.h pru_shared_memory.h | $(GEN_DIR)
+	@echo "Compiling pru1_raw_capture_i2s.c..."
+	$(CC) $(INCLUDE) $(CFLAGS) -c pru1_raw_capture_i2s.c -o $(GEN_DIR)/pru1_raw_capture_i2s.obj
+
+# Link raw I2S capture object file to create firmware
+$(I2S_RAW_TARGET): $(I2S_RAW_OBJECTS) $(LDFILE)
+	@echo "Linking PRU1 raw I2S capture firmware..."
+	$(LD) $(CFLAGS) -z $(LIB_INCLUDE) $(LFLAGS) -o $(I2S_RAW_TARGET) $(I2S_RAW_OBJECTS) \
+		-m $(GEN_DIR)/pru1_raw_capture_i2s.map $(LDFILE) --library=libc.a
+
+# Install raw I2S capture firmware to BeagleBone /lib/firmware
+i2s-raw-install: $(I2S_RAW_TARGET)
+	@echo "Installing PRU1 raw I2S capture firmware to /lib/firmware/am335x-pru1-fw..."
+	@sudo cp $(I2S_RAW_TARGET) /lib/firmware/am335x-pru1-fw
+	@echo "Raw I2S capture firmware installed. Reload PRU1 with:"
+	@echo "  echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc2/state"
+	@echo "  echo 'start' | sudo tee /sys/class/remoteproc/remoteproc2/state"
+
+# Deploy raw I2S capture firmware to BeagleBone (builds on target)
+i2s-raw-deploy-all:
+	@echo "Deploying PRU1 raw I2S capture firmware to $(DEPLOY_HOST)..."
+	@echo "Copying PRU source files to BeagleBone..."
+	@ssh $(DEPLOY_HOST) "mkdir -p $(DEPLOY_PATH)"
+	@scp -r *.c *.h *.cmd Makefile $(DEPLOY_HOST):$(DEPLOY_PATH)
+	@scp ../pru_shared_memory.h $(DEPLOY_HOST):$(DEPLOY_PATH)
+	@echo "Building PRU1 raw I2S capture firmware on BeagleBone..."
+	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_PATH) && make clean && make i2s-raw"
+	@echo "Installing and loading raw I2S capture firmware..."
+	@ssh $(DEPLOY_HOST) "sudo cp $(DEPLOY_PATH)gen/pru1_raw_capture_i2s.out /lib/firmware/am335x-pru1-fw && \
+	                     echo 'Stopping PRU1 (if running)...' && \
+	                     (echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc2/state > /dev/null 2>&1 || true) && \
+	                     sleep 1 && \
+	                     echo 'Starting PRU1...' && \
+	                     echo 'start' | sudo tee /sys/class/remoteproc/remoteproc2/state > /dev/null && \
+	                     sleep 1 && \
+	                     echo 'Verifying PRU1 state...' && \
+	                     cat /sys/class/remoteproc/remoteproc2/state"
+	@echo ""
+	@echo "Deploying raw_i2s_capture utility..."
+	@cd ../../analysis/audio/raw_i2s_capture && make deploy DEPLOY_HOST=$(DEPLOY_HOST)
+	@echo ""
+	@echo "========================================"
+	@echo "Raw I2S Capture Deployment complete!"
+	@echo "========================================"
+	@echo "PRU1 raw I2S firmware: $(DEPLOY_PATH)gen/pru1_raw_capture_i2s.out -> /lib/firmware/am335x-pru1-fw"
+	@echo "Capture utility: ~/led-sound-light-control/raw_i2s_capture"
+	@echo ""
+	@echo "To capture raw samples:"
+	@echo "  ssh $(DEPLOY_HOST)"
+	@echo "  cd ~/led-sound-light-control"
+	@echo "  sudo ./raw_i2s_capture 10 baseline.bin    # 10 seconds of silence"
+	@echo "  sudo ./raw_i2s_capture 30 music.bin       # 30 seconds of audio"
+	@echo ""
+	@echo "Then copy the .bin file back and analyze with:"
+	@echo "  python3 analysis/audio/analyze_i2s_raw.py <file.bin>"
+
 # Help target
 help:
 	@echo "PRU1 Audio Sampling Build System"
 	@echo ""
 	@echo "Firmware Targets:"
-	@echo "  all         - Build PRU1 ADC audio processing firmware (default)"
-	@echo "  i2s         - Build PRU1 I2S/McASP audio firmware (48 kHz MEMS mic)"
-	@echo "  raw         - Build PRU1 raw capture firmware (for parameter testing)"
-	@echo "  clean       - Remove all build artifacts (firmware + utility)"
-	@echo "  install     - Install ADC audio firmware to /lib/firmware (requires sudo)"
-	@echo "  i2s-install - Install I2S audio firmware to /lib/firmware (requires sudo)"
-	@echo "  raw-install - Install raw capture firmware to /lib/firmware (requires sudo)"
+	@echo "  all             - Build PRU1 ADC audio processing firmware (default)"
+	@echo "  i2s             - Build PRU1 I2S/McASP audio firmware (48 kHz MEMS mic)"
+	@echo "  raw             - Build PRU1 raw ADC capture firmware (for parameter testing)"
+	@echo "  i2s-raw         - Build PRU1 raw I2S capture firmware (for I2S analysis)"
+	@echo "  clean           - Remove all build artifacts (firmware + utility)"
+	@echo "  install         - Install ADC audio firmware to /lib/firmware (requires sudo)"
+	@echo "  i2s-install     - Install I2S audio firmware to /lib/firmware (requires sudo)"
+	@echo "  raw-install     - Install raw ADC capture firmware to /lib/firmware (requires sudo)"
+	@echo "  i2s-raw-install - Install raw I2S capture firmware to /lib/firmware (requires sudo)"
 	@echo ""
 	@echo "Utility Targets:"
 	@echo "  build-util     - Build audio utility for local testing (amd64)"
@@ -285,9 +358,10 @@ help:
 	@echo "  deploy-util    - Deploy utility to BeagleBone"
 	@echo ""
 	@echo "Deployment Targets:"
-	@echo "  deploy-all     - Deploy ADC audio firmware and utility to BeagleBone"
-	@echo "  i2s-deploy-all - Deploy I2S audio firmware and utility to BeagleBone (recommended)"
-	@echo "  raw-deploy-all - Deploy raw capture firmware to BeagleBone"
+	@echo "  deploy-all         - Deploy ADC audio firmware and utility to BeagleBone"
+	@echo "  i2s-deploy-all     - Deploy I2S audio firmware and utility to BeagleBone (recommended)"
+	@echo "  raw-deploy-all     - Deploy raw ADC capture firmware to BeagleBone"
+	@echo "  i2s-raw-deploy-all - Deploy raw I2S capture firmware and utility to BeagleBone"
 	@echo ""
 	@echo "Help:"
 	@echo "  help           - Show this help message"
@@ -304,8 +378,18 @@ help:
 	@echo "  4. make i2s-deploy-all          # Deploy I2S firmware"
 	@echo "  5. sudo ./audio-util test       # Verify operation"
 	@echo ""
-	@echo "Raw Capture Workflow:"
-	@echo "  1. make raw-deploy-all          # Deploy raw capture firmware"
+	@echo "Raw ADC Capture Workflow:"
+	@echo "  1. make raw-deploy-all          # Deploy raw ADC capture firmware"
 	@echo "  2. record-pru-raw -o samples.bin # Capture raw audio samples"
 	@echo "  3. analyze-audio-params samples.bin # Find optimal parameters"
-	@echo "  4. make i2s-deploy-all          # Switch back to I2S audio firmware"
+	@echo "  4. make deploy-all              # Switch back to ADC audio firmware"
+	@echo ""
+	@echo "Raw I2S Capture Workflow (for MEMS microphone analysis):"
+	@echo "  1. make i2s-raw-deploy-all      # Deploy raw I2S capture firmware + utility"
+	@echo "  2. ssh bbb1.wegman"
+	@echo "     cd ~/led-sound-light-control"
+	@echo "     sudo ./raw_i2s_capture 10 baseline.bin  # Capture silence"
+	@echo "     sudo ./raw_i2s_capture 30 music.bin     # Capture music"
+	@echo "  3. scp bbb1.wegman:~/led-sound-light-control/*.bin ."
+	@echo "  4. python3 analysis/audio/analyze_i2s_raw.py baseline.bin"
+	@echo "  5. make i2s-deploy-all          # Switch back to I2S audio firmware"
