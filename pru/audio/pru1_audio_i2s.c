@@ -301,16 +301,18 @@ static void init_mcasp_i2s(struct audio_control_block *ctrl) {
     );
 
     /* Step 3: Configure high-frequency clock (AHCLK)
-     * Using INTERNAL clock mode to match kernel driver configuration.
-     * The kernel McASP driver uses mcasp0_fck (24 MHz) as the source.
-     * HCLKRM = 1: Internal clock source
-     * HCLKRDIV = 0: No division (use 24 MHz directly)
+     * Using EXTERNAL clock mode with 24.576 MHz from CLKOUT2 (P9_25 -> P9_28 jumper).
+     * This provides exact 48 kHz sample rate with no clock error.
      *
-     * Note: This gives ~46.875 kHz sample rate (2.3% slower than 48 kHz)
-     * but the MEMS microphone tolerates this clock error.
+     * HCLKRM = 0: External clock source (from AHCLKR pin P9_28)
+     * HCLKRDIV = 0: No division (use 24.576 MHz directly)
+     *
+     * Clock chain:
+     *   CLKOUT2 (24.576 MHz) -> jumper -> P9_28 (AHCLKR) -> ACLK divider (/8) -> 3.072 MHz
+     *   3.072 MHz / 64 bits per frame = 48 kHz sample rate (exact)
      */
     MCASP_CFG_WRITE(MCASP_AHCLKRCTL,
-        MCASP_AHCLKRCTL_HCLKRM  /* Internal clock mode (0x8000) */
+        0  /* External clock mode (HCLKRM=0), no division */
     );
 
     /* Step 4: Configure receive bit clock (ACLKR/ACLKX)
@@ -327,7 +329,7 @@ static void init_mcasp_i2s(struct audio_control_block *ctrl) {
 
     /* Also configure transmit clock (needed for clock output on ACLKX) */
     MCASP_CFG_WRITE(MCASP_AHCLKXCTL,
-        MCASP_AHCLKRCTL_HCLKRM  /* Internal clock mode */
+        0  /* External clock mode (HCLKRM=0), no division */
     );
     MCASP_CFG_WRITE(MCASP_ACLKXCTL,
         (ACLK_DIV << MCASP_ACLKRCTL_CLKRDIV_SHIFT) |
@@ -445,12 +447,14 @@ static void init_mcasp_i2s(struct audio_control_block *ctrl) {
 
     /*
      * CRITICAL FIX: Re-enable AHCLK after clock reset sequence.
-     * Hardware clears AHCLKXE/AHCLKRE (HCLKRM) bits when releasing clock dividers
+     * Hardware clears AHCLK configuration when releasing clock dividers
      * from reset (TXCLKRST/RXCLKRST). Must re-enable them here.
      * This fix is from the kernel driver patch that made ALSA work.
+     *
+     * Using external clock mode (HCLKRM=0) for 24.576 MHz from CLKOUT2.
      */
-    MCASP_CFG_WRITE(MCASP_AHCLKRCTL, MCASP_AHCLKRCTL_HCLKRM);
-    MCASP_CFG_WRITE(MCASP_AHCLKXCTL, MCASP_AHCLKRCTL_HCLKRM);
+    MCASP_CFG_WRITE(MCASP_AHCLKRCTL, 0);  /* External clock mode */
+    MCASP_CFG_WRITE(MCASP_AHCLKXCTL, 0);  /* External clock mode */
 
     /* Enable RX serializer only (no TX serializer - matches kernel) */
     gblctl = MCASP_CFG_READ(MCASP_GBLCTL);
