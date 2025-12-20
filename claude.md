@@ -48,6 +48,26 @@ make deploy-uenv DEPLOY_HOST=bbb1.wegman
 ssh bbb1.wegman 'sudo reboot'
 ```
 
+## BeagleBone Device Tree Overlays
+
+### Overlay Location
+
+Device tree overlays on BeagleBone must be deployed to the **kernel-version-specific directory**, NOT `/lib/firmware`:
+
+```
+/boot/dtbs/<kernel-version>/overlays/
+```
+
+For example: `/boot/dtbs/5.10.168-ti-r83/overlays/`
+
+The `hardware/device-tree/Makefile` handles this correctly by:
+1. Getting the kernel version via `uname -r`
+2. Deploying to `/boot/dtbs/$(KERNEL_VERSION)/overlays/`
+
+### Overlay Changes Require Reboot
+
+Device tree overlays are loaded at boot time by U-Boot. After deploying overlay changes or modifying `uEnv.txt`, a **reboot is required** for changes to take effect.
+
 ## PRU Shared Memory
 
 The PRU shared memory layout is defined in `pru/pru_shared_memory.h`. When deploying PRU firmware, this header must be copied alongside the firmware files. The Makefiles handle this automatically.
