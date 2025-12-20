@@ -20,7 +20,7 @@ import {
   deleteConfig,
   setActiveConfig,
 } from '../services';
-import { ConfigurationList, ConfigurationEditor } from '../components/audioConfig';
+import { ConfigurationList, ConfigurationEditor, AudioStreamPreview } from '../components/audioConfig';
 import type {
   SavedAudioConfigSummary,
   SavedAudioConfig,
@@ -221,6 +221,9 @@ export function AudioConfigurationPage() {
           onDelete={() => setDeleteDialogOpen(true)}
         />
       )}
+
+      {/* Real-Time Audio Preview */}
+      <AudioStreamPreview />
 
       {/* Create Dialog */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
