@@ -57,6 +57,13 @@ export async function put<T>(endpoint: string, data?: unknown): Promise<T> {
   return handleResponse<T>(response);
 }
 
+export async function del<T>(endpoint: string): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: 'DELETE',
+  });
+  return handleResponse<T>(response);
+}
+
 export function getWebSocketUrl(endpoint: string): string {
   const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
   const url = API_BASE_URL.replace(/^https?:\/\//, '');

@@ -149,3 +149,44 @@ export interface AudioStreamData {
   processed: ProcessedAudioData;
   config: AudioTuningConfig;
 }
+
+// Audio Configuration Management Types
+
+export interface SavedAudioConfigSummary {
+  name: string;
+  display_name: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SavedAudioConfig extends SavedAudioConfigSummary {
+  config: AudioTuningConfig;
+}
+
+export interface ConfigListResponse {
+  configs: SavedAudioConfigSummary[];
+  active_config: string;
+}
+
+export interface CreateConfigRequest {
+  name: string;
+  display_name: string;
+  description: string;
+  config: AudioTuningConfig;
+}
+
+export interface UpdateConfigRequest {
+  display_name: string;
+  description: string;
+  config: AudioTuningConfig;
+}
+
+export interface SetActiveConfigRequest {
+  config_name: string;
+}
+
+export interface DeleteConfigResponse {
+  message: string;
+  name: string;
+}
