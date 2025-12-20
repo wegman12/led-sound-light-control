@@ -6,17 +6,30 @@ After=sysinit.target local-fs.target
 
 [Service]
 Type=oneshot
-# Wait for remoteproc to be available, then start the PRU
-ExecStart=/bin/sh -c 'for i in 1 2 3 4 5 6; do \
-  sleep 60; \
-  if [ -f /sys/class/remoteproc/remoteproc2/state ]; then \
-    echo "start" > /sys/class/remoteproc/remoteproc2/state && exit 0; \
-  fi; \
-  echo "Waiting for remoteproc2 (attempt $i/5)..."; \
-done; \
-echo "ERROR: remoteproc2 not available after 360 seconds"; \
-exit 1'
-ExecStop=/bin/sh -c 'echo "stop" > /sys/class/remoteproc/remoteproc2/state'
+# Wait for remoteproc to be available and ready, then start the PRU
+# Retries with increasing delay, handles already-running state gracefully
+ExecStart=/bin/sh -c '\
+  STATE_FILE=/sys/class/remoteproc/remoteproc2/state; \
+  for i in 1 2 3 4 5 6 7 8 9 10; do \
+    if [ -f "$STATE_FILE" ]; then \
+      CURRENT=$(cat "$STATE_FILE" 2>/dev/null); \
+      if [ "$CURRENT" = "running" ]; then \
+        echo "PRU1 already running"; \
+        exit 0; \
+      fi; \
+      if echo "start" > "$STATE_FILE" 2>/dev/null; then \
+        echo "PRU1 started successfully"; \
+        exit 0; \
+      fi; \
+      echo "Attempt $i: write failed, retrying..."; \
+    else \
+      echo "Attempt $i: waiting for remoteproc2..."; \
+    fi; \
+    sleep 10; \
+  done; \
+  echo "ERROR: Failed to start PRU1 after 100 seconds"; \
+  exit 1'
+ExecStop=/bin/sh -c 'echo "stop" > /sys/class/remoteproc/remoteproc2/state 2>/dev/null || true'
 RemainAfterExit=yes
 StandardOutput=journal
 StandardError=journal

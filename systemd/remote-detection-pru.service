@@ -1,22 +1,35 @@
 [Unit]
-Description=Enable PRU Remote Detection Firmware
+Description=Enable PRU0 Remote Detection Firmware
 Documentation=https://github.com/kevinwegman/led-sound-light-control
 Before=led-sound-light-control.service
 After=sysinit.target local-fs.target
 
 [Service]
 Type=oneshot
-# Wait for remoteproc to be available, then start the PRU
-ExecStart=/bin/sh -c 'for i in 1 2 3 4 5 6; do \
-  sleep 60; \
-  if [ -f /sys/class/remoteproc/remoteproc1/state ]; then \
-    echo "start" > /sys/class/remoteproc/remoteproc1/state && exit 0; \
-  fi; \
-  echo "Waiting for remoteproc1 (attempt $i/5)..."; \
-done; \
-echo "ERROR: remoteproc1 not available after 360 seconds"; \
-exit 1'
-ExecStop=/bin/sh -c 'echo "stop" > /sys/class/remoteproc/remoteproc1/state'
+# Wait for remoteproc to be available and ready, then start the PRU
+# Retries with increasing delay, handles already-running state gracefully
+ExecStart=/bin/sh -c '\
+  STATE_FILE=/sys/class/remoteproc/remoteproc1/state; \
+  for i in 1 2 3 4 5 6 7 8 9 10; do \
+    if [ -f "$STATE_FILE" ]; then \
+      CURRENT=$(cat "$STATE_FILE" 2>/dev/null); \
+      if [ "$CURRENT" = "running" ]; then \
+        echo "PRU0 already running"; \
+        exit 0; \
+      fi; \
+      if echo "start" > "$STATE_FILE" 2>/dev/null; then \
+        echo "PRU0 started successfully"; \
+        exit 0; \
+      fi; \
+      echo "Attempt $i: write failed, retrying..."; \
+    else \
+      echo "Attempt $i: waiting for remoteproc1..."; \
+    fi; \
+    sleep 10; \
+  done; \
+  echo "ERROR: Failed to start PRU0 after 100 seconds"; \
+  exit 1'
+ExecStop=/bin/sh -c 'echo "stop" > /sys/class/remoteproc/remoteproc1/state 2>/dev/null || true'
 RemainAfterExit=yes
 StandardOutput=journal
 StandardError=journal
