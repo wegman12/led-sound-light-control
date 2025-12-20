@@ -9,6 +9,10 @@
  * PRU Address: 0x00010000 (from PRU perspective)
  * Total Size: 12KB (0x3000)
  *
+ * NOTE: For 2048-point FFT, sample buffers are moved to DDR memory.
+ *       See pru_ddr_memory.h for DDR layout details.
+ *       Shared memory is still used for the control block.
+ *
  * Author: Generated with Claude Code
  * Target: BeagleBone Black AM335x
  */

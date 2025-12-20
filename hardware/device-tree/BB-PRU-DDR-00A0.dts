@@ -1,0 +1,82 @@
+/*
+ * Device Tree Overlay for PRU DDR Memory Carveout
+ * BeagleBone Black - Reserve DDR memory for PRU FFT processing
+ *
+ * This overlay reserves a 64KB region of DDR memory for PRU1 to use
+ * for FFT buffers and twiddle factors, enabling 2048-point FFT.
+ *
+ * Memory Layout (64KB at 0x9FF00000):
+ *   0x0000 - 0x1FFF: Sample Buffer A (8KB - 2048 x 32-bit samples)
+ *   0x2000 - 0x3FFF: Sample Buffer B (8KB - 2048 x 32-bit samples)
+ *   0x4000 - 0x5FFF: FFT Working Buffer (8KB - 2048 x complex Q15)
+ *   0x6000 - 0x7FFF: Twiddle Factors (8KB - 1024 x complex Q15 + padding)
+ *   0x8000 - 0xFFFF: Reserved for future use
+ *
+ * PRU Access:
+ *   PRU can access DDR via L3 interconnect at physical addresses.
+ *   The address 0x9FF00000 is near the end of a 512MB DDR region,
+ *   leaving plenty of room for Linux and applications.
+ *
+ * Note: On 512MB BeagleBone Black, DDR is at 0x80000000 - 0x9FFFFFFF.
+ *       We reserve the last 64KB at 0x9FF00000.
+ *
+ * Author: Generated with Claude Code
+ * Target: BeagleBone Black AM335x
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,beaglebone-green";
+
+    /* Identification */
+    part-number = "BB-PRU-DDR";
+    version = "00A0";
+
+    /*
+     * Fragment 0: Reserved memory node
+     * This reserves DDR memory so Linux won't use it
+     */
+    fragment@0 {
+        target-path = "/";
+        __overlay__ {
+            reserved-memory {
+                #address-cells = <1>;
+                #size-cells = <1>;
+                ranges;
+
+                /*
+                 * PRU FFT Memory Region
+                 * 64KB reserved at end of DDR for PRU audio processing
+                 *
+                 * Address chosen to be:
+                 * - Within DDR range (0x80000000-0x9FFFFFFF for 512MB)
+                 * - At a fixed, known location PRU can hardcode
+                 * - Aligned to 64KB boundary
+                 * - Far from kernel/user memory to avoid conflicts
+                 */
+                pru_fft_reserved: pru-fft@9ff00000 {
+                    reg = <0x9ff00000 0x10000>;  /* 64KB */
+                    no-map;  /* Don't include in kernel memory map */
+                    status = "okay";
+                };
+            };
+        };
+    };
+
+    /*
+     * Fragment 1: Add a sysfs node for userspace to query the region
+     * This allows the Go API to verify the memory is reserved
+     */
+    fragment@1 {
+        target = <&ocp>;
+        __overlay__ {
+            pru_fft_mem_helper {
+                compatible = "pru-fft-mem";
+                memory-region = <&pru_fft_reserved>;
+                status = "okay";
+            };
+        };
+    };
+};

@@ -62,6 +62,13 @@ I2S_RAW_OBJECTS := $(GEN_DIR)/pru1_raw_capture_i2s.obj
 # Output firmware for raw I2S capture
 I2S_RAW_TARGET := $(GEN_DIR)/pru1_raw_capture_i2s.out
 
+# Source files for I2S audio firmware with 2048-point FFT (uses DDR)
+I2S_2048_SOURCES := pru1_audio_i2s_2048.c fft_2048.c
+I2S_2048_OBJECTS := $(GEN_DIR)/pru1_audio_i2s_2048.obj $(GEN_DIR)/fft_2048.obj
+
+# Output firmware for 2048-point I2S audio processing
+I2S_2048_TARGET := $(GEN_DIR)/pru1_audio_i2s_2048.out
+
 # Go parameters
 GOCMD := go
 GOBUILD := $(GOCMD) build
@@ -74,7 +81,8 @@ UTIL_BINARY_BBB := audio-util-bbb
 # Phony targets
 .PHONY: all clean install help build-util build-util-bbb deploy-util deploy-all \
         raw raw-install raw-deploy-all i2s i2s-install i2s-deploy-all \
-        i2s-raw i2s-raw-install i2s-raw-deploy-all
+        i2s-raw i2s-raw-install i2s-raw-deploy-all \
+        i2s-2048 i2s-2048-install i2s-2048-deploy-all
 
 # Default target
 all: $(GEN_DIR) $(TARGET)
@@ -337,18 +345,86 @@ i2s-raw-deploy-all:
 	@echo "Then copy the .bin file back and analyze with:"
 	@echo "  python3 analysis/audio/analyze_i2s_raw.py <file.bin>"
 
+# === I2S 2048-point FFT Firmware Targets (uses DDR memory) ===
+
+# Build I2S 2048-point audio firmware
+i2s-2048: $(GEN_DIR) $(I2S_2048_TARGET)
+	@echo "PRU1 I2S 2048-point audio firmware build complete: $(I2S_2048_TARGET)"
+
+# Compile I2S 2048-point audio source to object file
+# Note: Headers may be in current dir (remote build) or parent dir (local build)
+$(GEN_DIR)/pru1_audio_i2s_2048.obj: pru1_audio_i2s_2048.c resource_table_empty.h fft_2048.h am335x_mcasp.h | $(GEN_DIR)
+	@echo "Compiling pru1_audio_i2s_2048.c..."
+	$(CC) $(INCLUDE) --include_path=. --include_path=.. $(CFLAGS) -c pru1_audio_i2s_2048.c -o $(GEN_DIR)/pru1_audio_i2s_2048.obj
+
+# Compile 2048-point FFT source to object file
+$(GEN_DIR)/fft_2048.obj: fft_2048.c fft_2048.h | $(GEN_DIR)
+	@echo "Compiling fft_2048.c..."
+	$(CC) $(INCLUDE) --include_path=. --include_path=.. $(CFLAGS) -c fft_2048.c -o $(GEN_DIR)/fft_2048.obj
+
+# Link I2S 2048-point object files to create firmware
+$(I2S_2048_TARGET): $(I2S_2048_OBJECTS) $(LDFILE)
+	@echo "Linking PRU1 I2S 2048-point audio firmware..."
+	$(LD) $(CFLAGS) -z $(LIB_INCLUDE) $(LFLAGS) -o $(I2S_2048_TARGET) $(I2S_2048_OBJECTS) \
+		-m $(GEN_DIR)/pru1_audio_i2s_2048.map $(LDFILE) --library=libc.a
+
+# Install I2S 2048-point audio firmware to BeagleBone /lib/firmware
+i2s-2048-install: $(I2S_2048_TARGET)
+	@echo "Installing PRU1 I2S 2048-point audio firmware to /lib/firmware/am335x-pru1-fw..."
+	@sudo cp $(I2S_2048_TARGET) /lib/firmware/am335x-pru1-fw
+	@echo "I2S 2048-point audio firmware installed. Reload PRU1 with:"
+	@echo "  echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc2/state"
+	@echo "  echo 'start' | sudo tee /sys/class/remoteproc/remoteproc2/state"
+
+# Deploy I2S 2048-point audio firmware to BeagleBone (builds on target)
+i2s-2048-deploy-all:
+	@echo "Deploying PRU1 I2S 2048-point audio firmware to $(DEPLOY_HOST)..."
+	@echo "Copying PRU source files to BeagleBone..."
+	@ssh $(DEPLOY_HOST) "mkdir -p $(DEPLOY_PATH)"
+	@scp -r *.c *.h *.cmd Makefile $(DEPLOY_HOST):$(DEPLOY_PATH)
+	@scp ../pru_shared_memory.h ../pru_ddr_memory.h $(DEPLOY_HOST):$(DEPLOY_PATH)
+	@echo "Building PRU1 I2S 2048-point audio firmware on BeagleBone..."
+	@ssh $(DEPLOY_HOST) "cd $(DEPLOY_PATH) && make clean && make i2s-2048"
+	@echo "Installing and loading I2S 2048-point audio firmware..."
+	@ssh $(DEPLOY_HOST) "sudo cp $(DEPLOY_PATH)gen/pru1_audio_i2s_2048.out /lib/firmware/am335x-pru1-fw && \
+	                     echo 'Stopping PRU1 (if running)...' && \
+	                     (echo 'stop' | sudo tee /sys/class/remoteproc/remoteproc2/state > /dev/null 2>&1 || true) && \
+	                     sleep 1 && \
+	                     echo 'Starting PRU1...' && \
+	                     echo 'start' | sudo tee /sys/class/remoteproc/remoteproc2/state > /dev/null && \
+	                     sleep 1 && \
+	                     echo 'Verifying PRU1 state...' && \
+	                     cat /sys/class/remoteproc/remoteproc2/state"
+	@echo ""
+	@$(MAKE) deploy-util
+	@echo ""
+	@echo "=============================================="
+	@echo "I2S 2048-point Audio Deployment complete!"
+	@echo "=============================================="
+	@echo "PRU1 I2S 2048-point firmware: $(DEPLOY_PATH)gen/pru1_audio_i2s_2048.out -> /lib/firmware/am335x-pru1-fw"
+	@echo "Utility: $(DEPLOY_PATH)$(UTIL_BINARY)"
+	@echo ""
+	@echo "IMPORTANT: BB-PRU-DDR-00A0 device tree overlay must be loaded for DDR access!"
+	@echo ""
+	@echo "To test on BeagleBone:"
+	@echo "  ssh $(DEPLOY_HOST)"
+	@echo "  cd $(DEPLOY_PATH)"
+	@echo "  sudo ./$(UTIL_BINARY) test"
+
 # Help target
 help:
 	@echo "PRU1 Audio Sampling Build System"
 	@echo ""
 	@echo "Firmware Targets:"
 	@echo "  all             - Build PRU1 ADC audio processing firmware (default)"
-	@echo "  i2s             - Build PRU1 I2S/McASP audio firmware (48 kHz MEMS mic)"
+	@echo "  i2s             - Build PRU1 I2S/McASP audio firmware (1024-point FFT)"
+	@echo "  i2s-2048        - Build PRU1 I2S audio firmware (2048-point FFT, uses DDR)"
 	@echo "  raw             - Build PRU1 raw ADC capture firmware (for parameter testing)"
 	@echo "  i2s-raw         - Build PRU1 raw I2S capture firmware (for I2S analysis)"
 	@echo "  clean           - Remove all build artifacts (firmware + utility)"
 	@echo "  install         - Install ADC audio firmware to /lib/firmware (requires sudo)"
 	@echo "  i2s-install     - Install I2S audio firmware to /lib/firmware (requires sudo)"
+	@echo "  i2s-2048-install- Install I2S 2048-point firmware to /lib/firmware (requires sudo)"
 	@echo "  raw-install     - Install raw ADC capture firmware to /lib/firmware (requires sudo)"
 	@echo "  i2s-raw-install - Install raw I2S capture firmware to /lib/firmware (requires sudo)"
 	@echo ""
@@ -358,10 +434,11 @@ help:
 	@echo "  deploy-util    - Deploy utility to BeagleBone"
 	@echo ""
 	@echo "Deployment Targets:"
-	@echo "  deploy-all         - Deploy ADC audio firmware and utility to BeagleBone"
-	@echo "  i2s-deploy-all     - Deploy I2S audio firmware and utility to BeagleBone (recommended)"
-	@echo "  raw-deploy-all     - Deploy raw ADC capture firmware to BeagleBone"
-	@echo "  i2s-raw-deploy-all - Deploy raw I2S capture firmware and utility to BeagleBone"
+	@echo "  deploy-all          - Deploy ADC audio firmware and utility to BeagleBone"
+	@echo "  i2s-deploy-all      - Deploy I2S audio firmware and utility to BeagleBone (1024-point)"
+	@echo "  i2s-2048-deploy-all - Deploy I2S 2048-point firmware (requires BB-PRU-DDR overlay)"
+	@echo "  raw-deploy-all      - Deploy raw ADC capture firmware to BeagleBone"
+	@echo "  i2s-raw-deploy-all  - Deploy raw I2S capture firmware and utility to BeagleBone"
 	@echo ""
 	@echo "Help:"
 	@echo "  help           - Show this help message"
