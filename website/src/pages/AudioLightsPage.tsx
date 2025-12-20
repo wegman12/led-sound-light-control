@@ -29,7 +29,7 @@ import {
   turnLightsOn,
   startAudioStream,
   stopAudioStream,
-  getAudioConfig,
+  getActiveConfig,
   getAudioStatus,
   ApiError,
 } from '../services';
@@ -38,7 +38,8 @@ import type {
   ManagerConfig,
   Color,
   FrequencyBand,
-  AudioConfigResponse,
+  SavedAudioConfig,
+  AudioTuningConfig,
   AudioStatusResponse,
   AudioModulatorConfig,
 } from '../types/api';
@@ -70,7 +71,7 @@ export default function AudioLightsPage() {
   const [error, setError] = useState<string | null>(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [audioStatus, setAudioStatus] = useState<AudioStatusResponse | null>(null);
-  const [audioConfig, setAudioConfig] = useState<AudioConfigResponse | null>(null);
+  const [activeConfig, setActiveConfig] = useState<SavedAudioConfig | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
 
   // Configuration for each color
@@ -106,13 +107,42 @@ export default function AudioLightsPage() {
     smoothing: 0.1,
   });
 
-  // Load audio config and status on mount
+  // Load active config and audio status on mount
   useEffect(() => {
     const loadAudioInfo = async () => {
       try {
-        const [config, status] = await Promise.all([getAudioConfig(), getAudioStatus()]);
-        setAudioConfig(config);
+        const [config, status] = await Promise.all([getActiveConfig(), getAudioStatus()]);
+        setActiveConfig(config);
         setAudioStatus(status);
+
+        // Pre-populate color band configs from active config
+        if (config?.config) {
+          const tuning = config.config;
+          setRedConfig((prev) => ({
+            ...prev,
+            minPower: tuning.bass.min_power_value,
+            maxPower: tuning.bass.max_power_value,
+            smoothing: tuning.bass.smoothing,
+          }));
+          setGreenConfig((prev) => ({
+            ...prev,
+            minPower: tuning.mid_low.min_power_value,
+            maxPower: tuning.mid_low.max_power_value,
+            smoothing: tuning.mid_low.smoothing,
+          }));
+          setBlueConfig((prev) => ({
+            ...prev,
+            minPower: tuning.mid_high.min_power_value,
+            maxPower: tuning.mid_high.max_power_value,
+            smoothing: tuning.mid_high.smoothing,
+          }));
+          setWhiteConfig((prev) => ({
+            ...prev,
+            minPower: tuning.treble.min_power_value,
+            maxPower: tuning.treble.max_power_value,
+            smoothing: tuning.treble.smoothing,
+          }));
+        }
       } catch (err) {
         console.error('Failed to load audio info:', err);
       } finally {
@@ -147,10 +177,10 @@ export default function AudioLightsPage() {
 
   const createAudioBehaviorConfig = (
     config: ColorBandConfig,
-    audioConfig: AudioConfigResponse | null
+    tuningConfig: AudioTuningConfig | undefined
   ): AudioModulatorConfig => {
-    const bandKey = config.frequencyBand.replace('-', '_') as keyof AudioConfigResponse;
-    const bandConfig = audioConfig?.[bandKey];
+    const bandKey = config.frequencyBand.replace('-', '_') as keyof Omit<AudioTuningConfig, 'bass_cutoff' | 'mid_high_cutoff' | 'treble_cutoff'>;
+    const bandConfig = tuningConfig?.[bandKey];
 
     return {
       frequency_band: config.frequencyBand,
@@ -182,7 +212,7 @@ export default function AudioLightsPage() {
           behaviors.push({
             behavior_type: 'audio_modulator',
             color,
-            config: createAudioBehaviorConfig(config, audioConfig),
+            config: createAudioBehaviorConfig(config, activeConfig?.config),
           });
         }
       }
@@ -350,6 +380,14 @@ export default function AudioLightsPage() {
             <Typography variant="body1" color="text.secondary">
               Configure LED colors to respond to different audio frequency bands
             </Typography>
+            {activeConfig && (
+              <Chip
+                label={`Using: ${activeConfig.display_name}`}
+                color="primary"
+                size="small"
+                sx={{ mt: 1 }}
+              />
+            )}
           </Box>
 
           {/* Audio Status */}
