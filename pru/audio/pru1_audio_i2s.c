@@ -301,18 +301,22 @@ static void init_mcasp_i2s(struct audio_control_block *ctrl) {
     );
 
     /* Step 3: Configure high-frequency clock (AHCLK)
-     * Using EXTERNAL clock mode with 24.576 MHz from CLKOUT2 (P9_25 -> P9_28 jumper).
-     * This provides exact 48 kHz sample rate with no clock error.
+     * Using INTERNAL clock mode with mcasp0_fck (24 MHz).
      *
-     * HCLKRM = 0: External clock source (from AHCLKR pin P9_28)
-     * HCLKRDIV = 0: No division (use 24.576 MHz directly)
+     * NOTE: External 24.576 MHz from CLKOUT2 requires HDMI audio PLL to be enabled.
+     * Since we've disabled HDMI audio overlay, CLKOUT2 only outputs 32.768 kHz.
+     * Using internal clock gives ~37.5 kHz sample rate instead of exact 48 kHz.
+     *
+     * HCLKRM = 1: Internal clock source (mcasp0_fck = 24 MHz)
+     * HCLKRDIV = 0: No division
      *
      * Clock chain:
-     *   CLKOUT2 (24.576 MHz) -> jumper -> P9_28 (AHCLKR) -> ACLK divider (/8) -> 3.072 MHz
-     *   3.072 MHz / 64 bits per frame = 48 kHz sample rate (exact)
+     *   mcasp0_fck (24 MHz) -> ACLK divider (/8) -> 3 MHz bit clock
+     *   3 MHz / 64 bits per frame = 46.875 kHz sample rate (theoretical)
+     *   Actual rate may differ due to clock source variations.
      */
     MCASP_CFG_WRITE(MCASP_AHCLKRCTL,
-        0  /* External clock mode (HCLKRM=0), no division */
+        MCASP_AHCLKRCTL_HCLKRM  /* Internal clock mode (0x8000) */
     );
 
     /* Step 4: Configure receive bit clock (ACLKR/ACLKX)
@@ -329,7 +333,7 @@ static void init_mcasp_i2s(struct audio_control_block *ctrl) {
 
     /* Also configure transmit clock (needed for clock output on ACLKX) */
     MCASP_CFG_WRITE(MCASP_AHCLKXCTL,
-        0  /* External clock mode (HCLKRM=0), no division */
+        MCASP_AHCLKRCTL_HCLKRM  /* Internal clock mode */
     );
     MCASP_CFG_WRITE(MCASP_ACLKXCTL,
         (ACLK_DIV << MCASP_ACLKRCTL_CLKRDIV_SHIFT) |
@@ -447,14 +451,12 @@ static void init_mcasp_i2s(struct audio_control_block *ctrl) {
 
     /*
      * CRITICAL FIX: Re-enable AHCLK after clock reset sequence.
-     * Hardware clears AHCLK configuration when releasing clock dividers
+     * Hardware clears AHCLKXE/AHCLKRE (HCLKRM) bits when releasing clock dividers
      * from reset (TXCLKRST/RXCLKRST). Must re-enable them here.
      * This fix is from the kernel driver patch that made ALSA work.
-     *
-     * Using external clock mode (HCLKRM=0) for 24.576 MHz from CLKOUT2.
      */
-    MCASP_CFG_WRITE(MCASP_AHCLKRCTL, 0);  /* External clock mode */
-    MCASP_CFG_WRITE(MCASP_AHCLKXCTL, 0);  /* External clock mode */
+    MCASP_CFG_WRITE(MCASP_AHCLKRCTL, MCASP_AHCLKRCTL_HCLKRM);
+    MCASP_CFG_WRITE(MCASP_AHCLKXCTL, MCASP_AHCLKRCTL_HCLKRM);
 
     /* Enable RX serializer only (no TX serializer - matches kernel) */
     gblctl = MCASP_CFG_READ(MCASP_GBLCTL);
