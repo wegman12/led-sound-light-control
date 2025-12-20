@@ -1,6 +1,21 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AppBar, Toolbar, Typography, Button, Box, Snackbar, Alert } from '@mui/material';
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Button,
+  Box,
+  Snackbar,
+  Alert,
+  IconButton,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+} from '@mui/material';
+import SettingsIcon from '@mui/icons-material/Settings';
+import TuneIcon from '@mui/icons-material/Tune';
 import { turnLightsOn, turnLightsOff, ApiError } from '../services';
 
 export default function Header() {
@@ -8,6 +23,21 @@ export default function Header() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [settingsAnchorEl, setSettingsAnchorEl] = useState<null | HTMLElement>(null);
+  const settingsMenuOpen = Boolean(settingsAnchorEl);
+
+  const handleSettingsClick = (event: React.MouseEvent<HTMLElement>) => {
+    setSettingsAnchorEl(event.currentTarget);
+  };
+
+  const handleSettingsClose = () => {
+    setSettingsAnchorEl(null);
+  };
+
+  const handleNavigateToAudioConfig = () => {
+    handleSettingsClose();
+    navigate('/audio-configuration');
+  };
 
   const handleTurnOn = async () => {
     setLoading(true);
@@ -51,7 +81,7 @@ export default function Header() {
           >
             LED Manager
           </Typography>
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             <Button
               color="inherit"
               variant="outlined"
@@ -68,6 +98,36 @@ export default function Header() {
             >
               Off
             </Button>
+            <IconButton
+              color="inherit"
+              onClick={handleSettingsClick}
+              aria-controls={settingsMenuOpen ? 'settings-menu' : undefined}
+              aria-haspopup="true"
+              aria-expanded={settingsMenuOpen ? 'true' : undefined}
+            >
+              <SettingsIcon />
+            </IconButton>
+            <Menu
+              id="settings-menu"
+              anchorEl={settingsAnchorEl}
+              open={settingsMenuOpen}
+              onClose={handleSettingsClose}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'right',
+              }}
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'right',
+              }}
+            >
+              <MenuItem onClick={handleNavigateToAudioConfig}>
+                <ListItemIcon>
+                  <TuneIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>Audio Configuration</ListItemText>
+              </MenuItem>
+            </Menu>
           </Box>
         </Toolbar>
       </AppBar>
