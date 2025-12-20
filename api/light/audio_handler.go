@@ -97,6 +97,24 @@ func (h *AudioHandler) handleAudioStart(w http.ResponseWriter, r *http.Request) 
 
 	h.pruManager = pruManager
 
+	// Push current config values to PRU to ensure sync with website
+	config := h.configManager.GetConfig()
+	bands := &audio.FrequencyBands{
+		BassMax:    uint32(config.BassCutoff),
+		MidLowMax:  uint32(config.MidHighCutoff),
+		MidHighMax: uint32(config.TrebleCutoff),
+	}
+	if err := h.pruManager.SetFrequencyBands(bands); err != nil {
+		h.logger.Error("Failed to set initial PRU frequency bands", zap.Error(err))
+		// Continue anyway - PRU will use its defaults
+	} else {
+		h.logger.Info("Initialized PRU frequency bands from config",
+			zap.Uint32("bass_max", bands.BassMax),
+			zap.Uint32("midlow_max", bands.MidLowMax),
+			zap.Uint32("midhigh_max", bands.MidHighMax),
+		)
+	}
+
 	// Create context for audio streaming
 	ctx, cancel := context.WithCancel(h.ctx)
 	h.cancelAudio = cancel
