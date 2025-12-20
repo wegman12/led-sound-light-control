@@ -28,7 +28,7 @@ func MakeLedTesterCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 
 			if !utilities.FileExists(ledCfg.inputPath) {
-				return fmt.Errorf("ledTester input file does not exist: " + ledCfg.inputPath)
+				return fmt.Errorf("ledTester input file does not exist: %s", ledCfg.inputPath)
 			}
 
 			// Open the JSON file
