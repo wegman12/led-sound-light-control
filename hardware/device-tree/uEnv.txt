@@ -28,7 +28,7 @@ uboot_overlay_addr7=BB-PWM-PINS-00A0.dtbo
 ###Disable auto loading of virtual capes (emmc/video/wireless/adc)
 #disable_uboot_overlay_emmc=1
 disable_uboot_overlay_video=1
-disable_uboot_overlay_audio=1  # Disable HDMI audio to free McASP0 for I2S microphone
+#disable_uboot_overlay_audio=1  # Re-enabled to get 24.576 MHz clock on CLKOUT2
 #disable_uboot_overlay_wireless=1
 #disable_uboot_overlay_adc=1
 ###
