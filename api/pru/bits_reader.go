@@ -1,75 +1,62 @@
-package main
+package pru
 
 import (
 	"fmt"
-	"os"
 	"syscall"
 	"unsafe"
-)
 
-const (
-	pruSharedMemAddr  = 0x4A310000
-	pruSharedMemSize  = 0x3000 // 12KB - BeagleBone PRU shared memory size
-	debugBitsOffset   = 0x1100 // After control block at 0x1000
+	"github.com/spf13/cobra"
 )
 
 type debugBitsData struct {
 	Valid     uint32
 	ErrorCode uint32
-	Bits      [36]uint8   // 36 bytes (33 actual bits + 3 padding) for natural 4-byte alignment
-	Durations [33]uint32  // LOW pulse durations in cycles
+	Bits      [36]uint8  // 36 bytes (33 actual bits + 3 padding) for natural 4-byte alignment
+	Durations [33]uint32 // LOW pulse durations in cycles
 }
 
-func main() {
+const (
+	threshold1ms     = 200000 // 1ms at 200 MHz
+	cyclesPerMicro   = 200
+)
+
+func MakeBitsReaderCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pru-bits",
+		Short: "Read captured IR bits from PRU",
+		Long:  "Reads and validates captured IR bits from the PRU, showing bit patterns and validation checks.",
+		RunE:  runBitsReader,
+	}
+}
+
+func runBitsReader(cmd *cobra.Command, args []string) error {
 	fmt.Println("PRU Captured Bits Reader")
 	fmt.Println("========================")
 	fmt.Println("")
 
-	// Open /dev/mem
-	memFile, err := os.OpenFile("/dev/mem", os.O_RDWR|os.O_SYNC, 0)
+	mem, err := MapPRUMemory()
 	if err != nil {
-		fmt.Printf("ERROR: Failed to open /dev/mem: %v\n", err)
-		fmt.Println("Are you running with sudo?")
-		os.Exit(1)
-	}
-	defer memFile.Close()
-
-	// Memory map PRU shared memory
-	mem, err := syscall.Mmap(
-		int(memFile.Fd()),
-		pruSharedMemAddr,
-		pruSharedMemSize,
-		syscall.PROT_READ|syscall.PROT_WRITE,
-		syscall.MAP_SHARED,
-	)
-	if err != nil {
-		fmt.Printf("ERROR: Failed to mmap PRU memory at 0x%X: %v\n", pruSharedMemAddr, err)
-		os.Exit(1)
+		return err
 	}
 	defer syscall.Munmap(mem)
 
-	fmt.Printf("✓ Successfully mapped PRU shared memory at 0x%X\n", pruSharedMemAddr)
+	fmt.Printf("Successfully mapped PRU shared memory at 0x%X\n", PRUSharedMemAddr)
 	fmt.Println("")
 
-	// Get pointer to debug bits data - use proper pointer arithmetic for alignment
 	debugData := (*debugBitsData)(unsafe.Pointer(uintptr(unsafe.Pointer(&mem[0])) + uintptr(debugBitsOffset)))
 
 	if debugData.Valid == 0 {
 		fmt.Println("No captured bits available yet. Press an IR button to capture data.")
-		os.Exit(0)
+		return nil
 	}
 
 	fmt.Printf("Valid: true\n")
 	fmt.Printf("Error Code: 0x%04X (%d)\n", debugData.ErrorCode, debugData.ErrorCode)
 	fmt.Println("")
 
-	// Display all 33 bits with durations
 	fmt.Println("Captured 33 bits:")
-	fmt.Println("Index | Bit | Duration (cycles) | Duration (μs) | Expected | vs Threshold")
+	fmt.Println("Index | Bit | Duration (cycles) | Duration (us) | Expected | vs Threshold")
 	fmt.Println("------+-----+-------------------+---------------+----------+--------------")
-
-	const THRESHOLD_1MS = 200000 // 1ms at 200 MHz
-	const CYCLES_PER_US = 200
 
 	for i := 0; i < 33; i++ {
 		expected := "?"
@@ -90,11 +77,11 @@ func main() {
 			marker = " <- INVALID"
 		}
 
-		durationUs := float64(debugData.Durations[i]) / float64(CYCLES_PER_US)
+		durationUs := float64(debugData.Durations[i]) / float64(cyclesPerMicro)
 
 		thresholdInfo := ""
 		if debugData.Durations[i] > 0 {
-			if debugData.Durations[i] < THRESHOLD_1MS {
+			if debugData.Durations[i] < threshold1ms {
 				thresholdInfo = "< 1ms (SHORT)"
 			} else {
 				thresholdInfo = ">= 1ms (LONG)"
@@ -107,25 +94,21 @@ func main() {
 
 	fmt.Println("")
 
-	// Display as binary string
 	fmt.Print("Binary: ")
 	for i := 0; i < 33; i++ {
 		fmt.Printf("%d", debugData.Bits[i])
 	}
 	fmt.Println("")
 
-	// Check which validation would fail
 	fmt.Println("")
 	fmt.Println("Validation checks:")
 
-	// START bit
 	if debugData.Bits[0] == 1 {
-		fmt.Println("  ✓ START bit is 1")
+		fmt.Println("  [OK] START bit is 1")
 	} else {
-		fmt.Println("  ✗ START bit is NOT 1")
+		fmt.Println("  [FAIL] START bit is NOT 1")
 	}
 
-	// HEADER bits (1-8 should be 0)
 	headerOk := true
 	for i := 1; i <= 8; i++ {
 		if debugData.Bits[i] != 0 {
@@ -134,12 +117,11 @@ func main() {
 		}
 	}
 	if headerOk {
-		fmt.Println("  ✓ HEADER bits (1-8) are all 0")
+		fmt.Println("  [OK] HEADER bits (1-8) are all 0")
 	} else {
-		fmt.Println("  ✗ HEADER bits (1-8) are NOT all 0")
+		fmt.Println("  [FAIL] HEADER bits (1-8) are NOT all 0")
 	}
 
-	// SEPARATOR bits (9-16 should be 1)
 	separatorOk := true
 	for i := 9; i <= 16; i++ {
 		if debugData.Bits[i] != 1 {
@@ -148,15 +130,16 @@ func main() {
 		}
 	}
 	if separatorOk {
-		fmt.Println("  ✓ SEPARATOR bits (9-16) are all 1")
+		fmt.Println("  [OK] SEPARATOR bits (9-16) are all 1")
 	} else {
-		fmt.Println("  ✗ SEPARATOR bits (9-16) are NOT all 1")
+		fmt.Println("  [FAIL] SEPARATOR bits (9-16) are NOT all 1")
 	}
 
-	// STOP bit
 	if debugData.Bits[32] == 1 {
-		fmt.Println("  ✓ STOP bit is 1")
+		fmt.Println("  [OK] STOP bit is 1")
 	} else {
-		fmt.Println("  ✗ STOP bit is NOT 1")
+		fmt.Println("  [FAIL] STOP bit is NOT 1")
 	}
+
+	return nil
 }

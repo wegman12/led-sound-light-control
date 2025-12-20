@@ -1,19 +1,18 @@
-package main
+package pru
 
 import (
 	"fmt"
-	"os"
 	"syscall"
 	"unsafe"
+
+	"github.com/spf13/cobra"
 )
 
 const (
-	pruSharedMemAddr   = 0x4A310000
-	pruSharedMemSize   = 0x3000
-	timingDataOffset   = 0x2000
-	maxTimingSamples   = 512
-	pruClockHz         = 200000000 // 200 MHz
-	cyclesPerUs        = 200       // 200 cycles per microsecond
+	timingDataOffset = 0x2000
+	maxTimingSamples = 512
+	pruClockHz       = 200000000 // 200 MHz
+	cyclesPerUs      = 200       // 200 cycles per microsecond
 )
 
 type timingSample struct {
@@ -27,38 +26,29 @@ type timingData struct {
 	Samples     [maxTimingSamples]timingSample
 }
 
-func main() {
+func MakeTimingReaderCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pru-timing",
+		Short: "Read timing data from PRU",
+		Long:  "Reads and analyzes timing data (state transitions and durations) captured by the PRU.",
+		RunE:  runTimingReader,
+	}
+}
+
+func runTimingReader(cmd *cobra.Command, args []string) error {
 	fmt.Println("PRU Timing Data Reader")
 	fmt.Println("======================")
 	fmt.Println("")
 
-	// Open /dev/mem
-	memFile, err := os.OpenFile("/dev/mem", os.O_RDWR|os.O_SYNC, 0)
+	mem, err := MapPRUMemory()
 	if err != nil {
-		fmt.Printf("ERROR: Failed to open /dev/mem: %v\n", err)
-		fmt.Println("Are you running with sudo?")
-		os.Exit(1)
-	}
-	defer memFile.Close()
-
-	// Memory map PRU shared memory
-	mem, err := syscall.Mmap(
-		int(memFile.Fd()),
-		pruSharedMemAddr,
-		pruSharedMemSize,
-		syscall.PROT_READ|syscall.PROT_WRITE,
-		syscall.MAP_SHARED,
-	)
-	if err != nil {
-		fmt.Printf("ERROR: Failed to mmap PRU memory at 0x%X: %v\n", pruSharedMemAddr, err)
-		os.Exit(1)
+		return err
 	}
 	defer syscall.Munmap(mem)
 
-	fmt.Printf("✓ Successfully mapped PRU shared memory at 0x%X\n", pruSharedMemAddr)
+	fmt.Printf("Successfully mapped PRU shared memory at 0x%X\n", PRUSharedMemAddr)
 	fmt.Println("")
 
-	// Get pointer to timing data - use proper pointer arithmetic for alignment
 	timing := (*timingData)(unsafe.Pointer(uintptr(unsafe.Pointer(&mem[0])) + uintptr(timingDataOffset)))
 
 	fmt.Printf("Timing capture complete: %v\n", timing.Complete != 0)
@@ -67,12 +57,11 @@ func main() {
 
 	if timing.SampleCount == 0 {
 		fmt.Println("No timing samples captured yet. Make sure the PRU code is running and press a button.")
-		os.Exit(0)
+		return nil
 	}
 
-	// Print timing data
 	fmt.Println("Timing Samples:")
-	fmt.Println("Index | State | Duration (cycles) | Duration (μs) | Duration (ms)")
+	fmt.Println("Index | State | Duration (cycles) | Duration (us) | Duration (ms)")
 	fmt.Println("------+-------+-------------------+---------------+-------------")
 
 	totalCycles := uint64(0)
@@ -94,10 +83,9 @@ func main() {
 	fmt.Println("")
 	totalUs := float64(totalCycles) / float64(cyclesPerUs)
 	totalMs := totalUs / 1000.0
-	fmt.Printf("Total duration: %d cycles (%.2f μs / %.3f ms)\n", totalCycles, totalUs, totalMs)
+	fmt.Printf("Total duration: %d cycles (%.2f us / %.3f ms)\n", totalCycles, totalUs, totalMs)
 	fmt.Println("")
 
-	// Print bit pattern interpretation (assuming HIGH durations encode bits)
 	fmt.Println("Bit pattern interpretation (based on HIGH durations):")
 	fmt.Println("(Using 1ms threshold: <1ms = 0, >=1ms = 1)")
 	fmt.Println("")
@@ -105,7 +93,7 @@ func main() {
 	bitPattern := ""
 	for i := uint32(0); i < timing.SampleCount && i < maxTimingSamples; i++ {
 		sample := timing.Samples[i]
-		if sample.State == 1 { // Only look at HIGH durations
+		if sample.State == 1 {
 			durationUs := float64(sample.Duration) / float64(cyclesPerUs)
 			if durationUs >= 1000.0 {
 				bitPattern += "1"
@@ -117,4 +105,6 @@ func main() {
 
 	fmt.Printf("Bits: %s\n", bitPattern)
 	fmt.Printf("Bit count: %d\n", len(bitPattern))
+
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/wegman12/led-sound-light-control/audio"
 	"github.com/wegman12/led-sound-light-control/infrastructure/server"
 	"github.com/wegman12/led-sound-light-control/light"
+	"github.com/wegman12/led-sound-light-control/pru"
 	"github.com/wegman12/led-sound-light-control/remote"
 )
 
@@ -38,6 +39,14 @@ func Execute() {
 	rootCmd.AddCommand(audio.MakePRURecordCmd())
 	rootCmd.AddCommand(audio.MakeRawCaptureCmd())
 	rootCmd.AddCommand(remote.MakeRemoteCmd())
+
+	// PRU debug commands
+	rootCmd.AddCommand(pru.MakeDebugCmd())
+	rootCmd.AddCommand(pru.MakeGpioReaderCmd())
+	rootCmd.AddCommand(pru.MakeTimingReaderCmd())
+	rootCmd.AddCommand(pru.MakeMemoryDumpCmd())
+	rootCmd.AddCommand(pru.MakeBitsReaderCmd())
+
 	err := rootCmd.Execute()
 	if err != nil {
 		os.Exit(1)

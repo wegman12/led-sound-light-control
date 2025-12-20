@@ -1,15 +1,14 @@
-package main
+package pru
 
 import (
 	"fmt"
-	"os"
 	"syscall"
 	"unsafe"
+
+	"github.com/spf13/cobra"
 )
 
 const (
-	pruSharedMemAddr  = 0x4A310000
-	pruSharedMemSize  = 0x3000
 	gpioRawDataOffset = 0x2000
 	maxGpioSamples    = 8192
 )
@@ -21,38 +20,29 @@ type gpioRawData struct {
 	Samples                [maxGpioSamples]uint8
 }
 
-func main() {
+func MakeGpioReaderCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pru-gpio",
+		Short: "Read raw GPIO data from PRU",
+		Long:  "Reads and analyzes raw GPIO sample data captured by the PRU, showing statistics and run-length encoding.",
+		RunE:  runGpioReader,
+	}
+}
+
+func runGpioReader(cmd *cobra.Command, args []string) error {
 	fmt.Println("PRU Raw GPIO Data Reader")
 	fmt.Println("========================")
 	fmt.Println("")
 
-	// Open /dev/mem
-	memFile, err := os.OpenFile("/dev/mem", os.O_RDWR|os.O_SYNC, 0)
+	mem, err := MapPRUMemory()
 	if err != nil {
-		fmt.Printf("ERROR: Failed to open /dev/mem: %v\n", err)
-		fmt.Println("Are you running with sudo?")
-		os.Exit(1)
-	}
-	defer memFile.Close()
-
-	// Memory map PRU shared memory
-	mem, err := syscall.Mmap(
-		int(memFile.Fd()),
-		pruSharedMemAddr,
-		pruSharedMemSize,
-		syscall.PROT_READ|syscall.PROT_WRITE,
-		syscall.MAP_SHARED,
-	)
-	if err != nil {
-		fmt.Printf("ERROR: Failed to mmap PRU memory at 0x%X: %v\n", pruSharedMemAddr, err)
-		os.Exit(1)
+		return err
 	}
 	defer syscall.Munmap(mem)
 
-	fmt.Printf("✓ Successfully mapped PRU shared memory at 0x%X\n", pruSharedMemAddr)
+	fmt.Printf("Successfully mapped PRU shared memory at 0x%X\n", PRUSharedMemAddr)
 	fmt.Println("")
 
-	// Get pointer to GPIO raw data - use proper pointer arithmetic for alignment
 	gpioData := (*gpioRawData)(unsafe.Pointer(uintptr(unsafe.Pointer(&mem[0])) + uintptr(gpioRawDataOffset)))
 
 	fmt.Printf("Capture complete: %v\n", gpioData.Complete != 0)
@@ -61,16 +51,14 @@ func main() {
 
 	if gpioData.SampleCount == 0 {
 		fmt.Println("No samples captured yet. Make sure the PRU code is running and press a button.")
-		os.Exit(0)
+		return nil
 	}
 
-	// Display full __R31 register value for pin verification
 	fmt.Printf("DEBUG: First __R31 register value: 0x%08X\n", gpioData.FirstFullRegisterValue)
 	fmt.Printf("  Bit 5 (P9_27 PRU input): %d\n", (gpioData.FirstFullRegisterValue>>5)&1)
 	fmt.Printf("  All 32 bits: %032b\n", gpioData.FirstFullRegisterValue)
 	fmt.Println("")
 
-	// Analyze the data
 	zeros := 0
 	ones := 0
 	transitions := 0
@@ -97,7 +85,6 @@ func main() {
 	fmt.Printf("  Transitions: %d\n", transitions)
 	fmt.Println("")
 
-	// Print first 200 samples in groups of 50 for readability
 	fmt.Println("First 200 samples (0=LOW, 1=HIGH):")
 	for start := uint32(0); start < 200 && start < gpioData.SampleCount; start += 50 {
 		end := start + 50
@@ -116,7 +103,6 @@ func main() {
 	}
 	fmt.Println("")
 
-	// Find and display runs (consecutive same values)
 	fmt.Println("Run-length encoding (first 50 runs):")
 	fmt.Println("State | Run Length")
 	fmt.Println("------+-----------")
@@ -129,7 +115,6 @@ func main() {
 		if gpioData.Samples[i] == currentState {
 			runLength++
 		} else {
-			// End of run
 			stateStr := "HIGH"
 			if currentState == 0 {
 				stateStr = "LOW "
@@ -137,13 +122,11 @@ func main() {
 			fmt.Printf("%s  | %d\n", stateStr, runLength)
 			runCount++
 
-			// Start new run
 			currentState = gpioData.Samples[i]
 			runLength = 1
 		}
 	}
 
-	// Print final run
 	if runLength > 0 && runCount < 50 {
 		stateStr := "HIGH"
 		if currentState == 0 {
@@ -151,4 +134,6 @@ func main() {
 		}
 		fmt.Printf("%s  | %d\n", stateStr, runLength)
 	}
+
+	return nil
 }

@@ -1,17 +1,16 @@
-package main
+package pru
 
 import (
 	"fmt"
-	"os"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/spf13/cobra"
 )
 
 const (
-	pruSharedMemAddr   = 0x4A310000
-	pruSharedMemSize   = 0x3000
-	controlBlockOffset = 0x0800 // PRU0 IR control block (was 0x1000)
+	controlBlockOffset = 0x0800
 )
 
 type pruControlBlock struct {
@@ -24,27 +23,22 @@ type pruControlBlock struct {
 	ErrorCode    uint32
 }
 
-// Status code constants (matching pru0_ir_detector.c)
 const (
-	STATUS_RUNNING = 0x52554E // "RUN" in ASCII
-)
-
-// Error code constants (matching pru0_ir_detector.c)
-const (
-	ERROR_NONE           = 0x0000
-	ERROR_LEADER_LOW     = 0x0001
-	ERROR_LEADER_HIGH    = 0x0002
-	ERROR_FIRST_LOW      = 0x0003
-	ERROR_DATA_HIGH      = 0x0004
-	ERROR_DATA_LOW       = 0x0005
-	ERROR_START_BIT      = 0x0006
-	ERROR_HEADER_BITS    = 0x0007
-	ERROR_SEPARATOR_BITS = 0x0008
-	ERROR_NO_MATCH       = 0x0009
+	statusRunning     = 0x52554E // "RUN" in ASCII
+	errorNone         = 0x0000
+	errorLeaderLow    = 0x0001
+	errorLeaderHigh   = 0x0002
+	errorFirstLow     = 0x0003
+	errorDataHigh     = 0x0004
+	errorDataLow      = 0x0005
+	errorStartBit     = 0x0006
+	errorHeaderBits   = 0x0007
+	errorSeparatorBit = 0x0008
+	errorNoMatch      = 0x0009
 )
 
 func statusString(status uint32) string {
-	if status == STATUS_RUNNING {
+	if status == statusRunning {
 		return "RUN"
 	} else if status == 0 {
 		return "OFF"
@@ -54,63 +48,54 @@ func statusString(status uint32) string {
 
 func errorCodeString(code uint32) string {
 	switch code {
-	case ERROR_NONE:
+	case errorNone:
 		return "NONE"
-	case ERROR_LEADER_LOW:
+	case errorLeaderLow:
 		return "LEADER_LOW"
-	case ERROR_LEADER_HIGH:
+	case errorLeaderHigh:
 		return "LEADER_HIGH"
-	case ERROR_FIRST_LOW:
+	case errorFirstLow:
 		return "FIRST_LOW"
-	case ERROR_DATA_HIGH:
+	case errorDataHigh:
 		return "DATA_HIGH"
-	case ERROR_DATA_LOW:
+	case errorDataLow:
 		return "DATA_LOW"
-	case ERROR_START_BIT:
+	case errorStartBit:
 		return "START_BIT"
-	case ERROR_HEADER_BITS:
+	case errorHeaderBits:
 		return "HEADER_BITS"
-	case ERROR_SEPARATOR_BITS:
+	case errorSeparatorBit:
 		return "SEPARATOR_BITS"
-	case ERROR_NO_MATCH:
+	case errorNoMatch:
 		return "NO_MATCH"
 	default:
 		return fmt.Sprintf("UNKNOWN(0x%04X)", code)
 	}
 }
 
-func main() {
+func MakeDebugCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pru-debug",
+		Short: "Monitor PRU control block status",
+		Long:  "Continuously monitors the PRU shared memory control block, showing write/read indices, event counts, errors, and status.",
+		RunE:  runDebug,
+	}
+}
+
+func runDebug(cmd *cobra.Command, args []string) error {
 	fmt.Println("PRU Shared Memory Debug Tool")
 	fmt.Println("============================")
 	fmt.Println("")
 
-	// Open /dev/mem
-	memFile, err := os.OpenFile("/dev/mem", os.O_RDWR|os.O_SYNC, 0)
+	mem, err := MapPRUMemory()
 	if err != nil {
-		fmt.Printf("ERROR: Failed to open /dev/mem: %v\n", err)
-		fmt.Println("Are you running with sudo?")
-		os.Exit(1)
-	}
-	defer memFile.Close()
-
-	// Memory map PRU shared memory
-	mem, err := syscall.Mmap(
-		int(memFile.Fd()),
-		pruSharedMemAddr,
-		pruSharedMemSize,
-		syscall.PROT_READ|syscall.PROT_WRITE,
-		syscall.MAP_SHARED,
-	)
-	if err != nil {
-		fmt.Printf("ERROR: Failed to mmap PRU memory at 0x%X: %v\n", pruSharedMemAddr, err)
-		os.Exit(1)
+		return err
 	}
 	defer syscall.Munmap(mem)
 
-	fmt.Printf("✓ Successfully mapped PRU shared memory at 0x%X\n", pruSharedMemAddr)
+	fmt.Printf("Successfully mapped PRU shared memory at 0x%X\n", PRUSharedMemAddr)
 	fmt.Println("")
 
-	// Get pointer to control block - use proper pointer arithmetic for alignment
 	controlBlock := (*pruControlBlock)(unsafe.Pointer(uintptr(unsafe.Pointer(&mem[0])) + uintptr(controlBlockOffset)))
 
 	fmt.Println("Monitoring PRU Control Block:")
@@ -134,27 +119,26 @@ func main() {
 
 		timestamp := time.Now().Format("15:04:05")
 
-		// Highlight changes
 		errorCodeStr := errorCodeString(errorCode)
 		if errorCode != lastErrorCode {
-			errorCodeStr = fmt.Sprintf("\033[31m%s\033[0m", errorCodeStr)  // Red for error changes
+			errorCodeStr = fmt.Sprintf("\033[31m%s\033[0m", errorCodeStr)
 		}
 
 		eventsStr := fmt.Sprintf("%d", events)
 		if events != lastEvents {
-			eventsStr = fmt.Sprintf("\033[32m%d\033[0m", events)  // Green for new events
+			eventsStr = fmt.Sprintf("\033[32m%d\033[0m", events)
 		}
 
 		errorsStr := fmt.Sprintf("%d", errors)
 		if errors != lastErrors {
-			errorsStr = fmt.Sprintf("\033[33m%d\033[0m", errors)  // Yellow for new errors
+			errorsStr = fmt.Sprintf("\033[33m%d\033[0m", errors)
 		}
 
 		statusStr := statusString(status)
-		if status == STATUS_RUNNING {
-			statusStr = fmt.Sprintf("\033[32m%s\033[0m", statusStr)  // Green for running
+		if status == statusRunning {
+			statusStr = fmt.Sprintf("\033[32m%s\033[0m", statusStr)
 		} else {
-			statusStr = fmt.Sprintf("\033[31m%s\033[0m", statusStr)  // Red for not running
+			statusStr = fmt.Sprintf("\033[31m%s\033[0m", statusStr)
 		}
 
 		fmt.Printf("%s | %5d | %4d | %6s | %6s | %7d | %6s | %s\n",
