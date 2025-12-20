@@ -15,7 +15,13 @@
       "Bash(make deploy-full:*)",
       "Bash(for i in {1..15})",
       "Bash(grep:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(make i2s-deploy-all:*)",
+      "Bash(make deploy-uenv:*)",
+      "Bash(for:*)",
+      "Bash(do ssh -o ConnectTimeout=5 bbb1.wegman \"uptime\")",
+      "Bash(echo:*)",
+      "Bash(make deploy:*)"
     ],
     "deny": [],
     "ask": []

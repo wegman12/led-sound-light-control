@@ -1,0 +1,114 @@
+================================================================================
+AUDIO PARAMETER OPTIMIZATION REPORT
+================================================================================
+
+Total configurations tested: 80
+
+================================================================================
+TOP 5 CONFIGURATIONS BY SIGNAL-TO-NOISE RATIO
+================================================================================
+
+#1 - Overall SNR: 7.36 dB
+  Window: none
+  Smoothing Alpha: 0.3
+  Bass Max: 100 Hz
+  Mid-Low Max: 500 Hz
+  Mid-High Max: 2000 Hz
+  Band SNRs: Bass=6.45dB, MidLow=9.84dB, MidHigh=7.74dB, Treble=5.40dB
+  Band CVs: Bass=55.9%, MidLow=33.1%, MidHigh=34.7%, Treble=39.3%
+
+#2 - Overall SNR: 7.35 dB
+  Window: none
+  Smoothing Alpha: 0.5
+  Bass Max: 100 Hz
+  Mid-Low Max: 500 Hz
+  Mid-High Max: 2000 Hz
+  Band SNRs: Bass=6.45dB, MidLow=9.83dB, MidHigh=7.74dB, Treble=5.40dB
+  Band CVs: Bass=60.0%, MidLow=35.7%, MidHigh=37.3%, Treble=42.8%
+
+#3 - Overall SNR: 7.35 dB
+  Window: none
+  Smoothing Alpha: 0.7
+  Bass Max: 100 Hz
+  Mid-Low Max: 500 Hz
+  Mid-High Max: 2000 Hz
+  Band SNRs: Bass=6.44dB, MidLow=9.83dB, MidHigh=7.73dB, Treble=5.40dB
+  Band CVs: Bass=62.9%, MidLow=37.7%, MidHigh=39.5%, Treble=45.6%
+
+#4 - Overall SNR: 7.35 dB
+  Window: none
+  Smoothing Alpha: 0.9
+  Bass Max: 100 Hz
+  Mid-Low Max: 500 Hz
+  Mid-High Max: 2000 Hz
+  Band SNRs: Bass=6.44dB, MidLow=9.83dB, MidHigh=7.73dB, Treble=5.40dB
+  Band CVs: Bass=65.6%, MidLow=39.5%, MidHigh=41.5%, Treble=48.0%
+
+#5 - Overall SNR: 7.35 dB
+  Window: none
+  Smoothing Alpha: 1.0
+  Bass Max: 100 Hz
+  Mid-Low Max: 500 Hz
+  Mid-High Max: 2000 Hz
+  Band SNRs: Bass=6.44dB, MidLow=9.83dB, MidHigh=7.73dB, Treble=5.40dB
+  Band CVs: Bass=67.0%, MidLow=40.6%, MidHigh=42.5%, Treble=49.2%
+
+================================================================================
+TOP 5 CONFIGURATIONS BY DYNAMIC RANGE (CV)
+================================================================================
+
+#1 - Average CV: 52.7%
+  Window: blackman
+  Smoothing Alpha: 1.0
+  Overall SNR: 7.29 dB
+  Band CVs: Bass=70.7%, MidLow=44.2%, MidHigh=42.4%, Treble=53.4%
+
+#2 - Average CV: 52.1%
+  Window: hann
+  Smoothing Alpha: 1.0
+  Overall SNR: 7.24 dB
+  Band CVs: Bass=70.6%, MidLow=43.0%, MidHigh=41.7%, Treble=53.3%
+
+#3 - Average CV: 52.1%
+  Window: blackman
+  Smoothing Alpha: 1.0
+  Overall SNR: 6.66 dB
+  Band CVs: Bass=55.1%, MidLow=40.2%, MidHigh=56.9%, Treble=56.3%
+
+#4 - Average CV: 51.9%
+  Window: hamming
+  Smoothing Alpha: 1.0
+  Overall SNR: 7.23 dB
+  Band CVs: Bass=70.8%, MidLow=42.8%, MidHigh=41.4%, Treble=52.5%
+
+#5 - Average CV: 51.4%
+  Window: blackman
+  Smoothing Alpha: 0.9
+  Overall SNR: 7.29 dB
+  Band CVs: Bass=68.7%, MidLow=42.5%, MidHigh=41.5%, Treble=52.8%
+
+================================================================================
+RECOMMENDED CONFIGURATION
+================================================================================
+
+Best balance of signal quality and dynamic range:
+
+  Window Type: blackman
+  Smoothing Alpha: 1.0
+  Bass Max: 100 Hz
+  Mid-Low Max: 500 Hz
+  Mid-High Max: 2000 Hz
+
+  Overall SNR: 7.29 dB
+  Band SNRs: Bass=6.80dB, MidLow=10.11dB, MidHigh=7.68dB, Treble=4.57dB
+  Band CVs: Bass=70.7%, MidLow=44.2%, MidHigh=42.4%, Treble=53.4%
+
+To apply these settings to PRU firmware:
+  1. Update pru/audio/pru1_audio_i2s.c:
+     - BASS_MAX_HZ = 100
+     - MIDLOW_MAX_HZ = 500
+     - MIDHIGH_MAX_HZ = 2000
+     - smoothing_alpha_x1000 = 1000
+     - Window function: blackman
+  2. Rebuild and deploy: cd pru/audio && make i2s-deploy-all
+
