@@ -77,7 +77,7 @@ func RegisterRoutes(mux *http.ServeMux, ctx context.Context, wg *sync.WaitGroup,
 	wsHandler := NewAudioWebSocketHandler(audioProvider, configManager, logger)
 
 	// Register audio control endpoints
-	audioHandler := newAudioHandler(ctx, audioProvider, configManager, wsHandler, logger)
+	audioHandler := newAudioHandler(ctx, audioProvider, configManager, configRepo, wsHandler, logger)
 	mux.HandleFunc("POST /api/lights/audio/start", audioHandler.handleAudioStart)
 	mux.HandleFunc("POST /api/lights/audio/stop", audioHandler.handleAudioStop)
 	mux.HandleFunc("GET /api/lights/audio/status", audioHandler.handleAudioStatus)

@@ -17,6 +17,7 @@ type AudioHandler struct {
 	ctx           context.Context
 	audioProvider behavior.AudioProvider
 	configManager *AudioTuningConfigManager
+	configRepo    *AudioConfigRepository
 	wsHandler     *AudioWebSocketHandler
 	pruManager    *audio.PRUManager
 	cancelAudio   context.CancelFunc
@@ -29,6 +30,7 @@ func newAudioHandler(
 	ctx context.Context,
 	audioProvider behavior.AudioProvider,
 	configManager *AudioTuningConfigManager,
+	configRepo *AudioConfigRepository,
 	wsHandler *AudioWebSocketHandler,
 	logger *zap.Logger,
 ) *AudioHandler {
@@ -36,6 +38,7 @@ func newAudioHandler(
 		ctx:           ctx,
 		audioProvider: audioProvider,
 		configManager: configManager,
+		configRepo:    configRepo,
 		wsHandler:     wsHandler,
 		logger:        logger,
 	}
@@ -333,8 +336,58 @@ func (h *AudioHandler) handleUpdateTuningConfig(w http.ResponseWriter, r *http.R
 	})
 }
 
-// handleSaveTuningConfig saves the current tuning configuration to file
+// handleSaveTuningConfig saves the current tuning configuration
+// If repository is available, saves to the active config in repository
+// Otherwise falls back to legacy file-based save
 func (h *AudioHandler) handleSaveTuningConfig(w http.ResponseWriter, r *http.Request) {
+	config := h.configManager.GetConfig()
+
+	// If we have a repository, update the active config there
+	if h.configRepo != nil {
+		activeName, err := h.configRepo.GetActiveName()
+		if err != nil {
+			h.logger.Error("Failed to get active config name", zap.Error(err))
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Failed to get active configuration: " + err.Error(),
+			})
+			return
+		}
+
+		// Get the current saved config to preserve metadata
+		savedConfig, err := h.configRepo.Get(activeName)
+		if err != nil {
+			h.logger.Error("Failed to get active config", zap.String("name", activeName), zap.Error(err))
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Failed to get active configuration: " + err.Error(),
+			})
+			return
+		}
+
+		// Update the tuning config while preserving metadata
+		savedConfig.Config = config
+		if err := h.configRepo.Update(activeName, savedConfig); err != nil {
+			h.logger.Error("Failed to save config to repository", zap.String("name", activeName), zap.Error(err))
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Failed to save configuration: " + err.Error(),
+			})
+			return
+		}
+
+		h.logger.Info("Audio tuning configuration saved to repository", zap.String("config", activeName))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message":     "Configuration saved successfully",
+			"config_name": activeName,
+			"config":      config,
+		})
+		return
+	}
+
+	// Fallback to legacy file-based save
 	if err := h.configManager.SaveConfig(); err != nil {
 		h.logger.Error("Failed to save tuning config", zap.Error(err))
 		w.WriteHeader(http.StatusInternalServerError)
@@ -344,7 +397,6 @@ func (h *AudioHandler) handleSaveTuningConfig(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	config := h.configManager.GetConfig()
 	h.logger.Info("Audio tuning configuration saved to file")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
