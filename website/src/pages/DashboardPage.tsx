@@ -5,8 +5,6 @@ import BoltIcon from '@mui/icons-material/Bolt';
 import GradientIcon from '@mui/icons-material/Gradient';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import MusicNoteIcon from '@mui/icons-material/MusicNote';
-import TimelineIcon from '@mui/icons-material/Timeline';
-import TuneIcon from '@mui/icons-material/Tune';
 import BehaviorCard from '../components/BehaviorCard';
 
 export default function DashboardPage() {
@@ -67,18 +65,6 @@ export default function DashboardPage() {
             description="Audio-reactive lighting synchronized to music"
             icon={<MusicNoteIcon sx={{ fontSize: 'inherit' }} />}
             path="/audio-lights"
-          />
-          <BehaviorCard
-            title="Audio Visualizer"
-            description="Visualize and analyze LED behavior from audio samples"
-            icon={<TimelineIcon sx={{ fontSize: 'inherit' }} />}
-            path="/audio-visualizer"
-          />
-          <BehaviorCard
-            title="Audio Tuning"
-            description="Tune audio parameters in real-time with live visualization"
-            icon={<TuneIcon sx={{ fontSize: 'inherit' }} />}
-            path="/audio-tuning"
           />
         </Box>
       </Box>
