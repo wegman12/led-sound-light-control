@@ -64,13 +64,13 @@ func NewAudioTuningConfigManager(configPath string, logger *zap.Logger) (*AudioT
 }
 
 // getDefaultAudioTuningConfig returns the default audio tuning configuration
-// These values are from the audio analysis (analysis/audio/audio_analysis.ipynb)
-// Based on analysis of bagpipes.csv, crazy_frog.csv, and christmas.csv
+// Updated based on I2S microphone optimization analysis
+// See: analysis/audio/i2s_capture_data/optimization_results_v2/optimization_report.txt
 func getDefaultAudioTuningConfig() AudioTuningConfig {
 	return AudioTuningConfig{
-		BassCutoff:    150,
-		MidHighCutoff: 1000,
-		TrebleCutoff:  2000,
+		BassCutoff:    100,  // Bass: 0-100 Hz (sub-bass and low bass)
+		MidHighCutoff: 500,  // Mid-Low: 100-500 Hz (mid-bass, warmth)
+		TrebleCutoff:  2000, // Mid-High: 500-2000 Hz (clarity, presence), Treble: 2000+ Hz
 		Bass: AudioTuningBandConfig{
 			ScalingFactor:  0.000001,
 			NoiseThreshold: 92565436,

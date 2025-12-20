@@ -14,15 +14,15 @@ import (
 
 // AudioHandler manages HTTP endpoints for audio-reactive lighting control
 type AudioHandler struct {
-	ctx             context.Context
-	audioProvider   behavior.AudioProvider
-	configManager   *AudioTuningConfigManager
-	wsHandler       *AudioWebSocketHandler
-	pruManager      *audio.PRUManager
-	cancelAudio     context.CancelFunc
-	mu              sync.Mutex
-	isStreaming     bool
-	logger          *zap.Logger
+	ctx           context.Context
+	audioProvider behavior.AudioProvider
+	configManager *AudioTuningConfigManager
+	wsHandler     *AudioWebSocketHandler
+	pruManager    *audio.PRUManager
+	cancelAudio   context.CancelFunc
+	mu            sync.Mutex
+	isStreaming   bool
+	logger        *zap.Logger
 }
 
 func newAudioHandler(
@@ -43,9 +43,9 @@ func newAudioHandler(
 
 // AudioStatusResponse contains the current audio streaming status
 type AudioStatusResponse struct {
-	IsStreaming bool                     `json:"is_streaming"`
-	Profile     *behavior.AudioProfile   `json:"profile,omitempty"`
-	Message     string                   `json:"message,omitempty"`
+	IsStreaming bool                   `json:"is_streaming"`
+	Profile     *behavior.AudioProfile `json:"profile,omitempty"`
+	Message     string                 `json:"message,omitempty"`
 }
 
 // AudioBandConfig contains recommended configuration for a frequency band
@@ -126,10 +126,10 @@ func (h *AudioHandler) handleAudioStart(w http.ResponseWriter, r *http.Request) 
 				// Convert PRU SoundProfile to behavior AudioProfile
 				// Use the Avg values (average magnitude per bin)
 				audioProfile := behavior.AudioProfile{
-					Bass:      float64(profile.BassAvg),
-					MidLow:    float64(profile.MidLowAvg),
-					MidHigh:   float64(profile.MidHighAvg),
-					Treble:    float64(profile.TrebleAvg),
+					Bass:      float64(profile.BassSum),
+					MidLow:    float64(profile.MidLowSum),
+					MidHigh:   float64(profile.MidHighSum),
+					Treble:    float64(profile.TrebleSum),
 					Timestamp: time.Now(),
 				}
 
@@ -151,7 +151,7 @@ func (h *AudioHandler) handleAudioStart(w http.ResponseWriter, r *http.Request) 
 	h.logger.Info("PRU audio streaming started successfully")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message":     "Audio streaming started",
+		"message":      "Audio streaming started",
 		"is_streaming": true,
 	})
 }
@@ -192,7 +192,7 @@ func (h *AudioHandler) handleAudioStop(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("PRU audio streaming stopped successfully")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message":     "Audio streaming stopped",
+		"message":      "Audio streaming stopped",
 		"is_streaming": false,
 	})
 }
@@ -281,6 +281,27 @@ func (h *AudioHandler) handleUpdateTuningConfig(w http.ResponseWriter, r *http.R
 		})
 		return
 	}
+
+	// Push frequency band changes to PRU if streaming is active
+	h.mu.Lock()
+	if h.pruManager != nil {
+		bands := &audio.FrequencyBands{
+			BassMax:    uint32(config.BassCutoff),
+			MidLowMax:  uint32(config.MidHighCutoff),
+			MidHighMax: uint32(config.TrebleCutoff),
+		}
+		if err := h.pruManager.SetFrequencyBands(bands); err != nil {
+			h.logger.Error("Failed to update PRU frequency bands", zap.Error(err))
+			// Don't fail the request, just log the error
+		} else {
+			h.logger.Info("Updated PRU frequency bands",
+				zap.Uint32("bass_max", bands.BassMax),
+				zap.Uint32("midlow_max", bands.MidLowMax),
+				zap.Uint32("midhigh_max", bands.MidHighMax),
+			)
+		}
+	}
+	h.mu.Unlock()
 
 	// Notify WebSocket clients of config update
 	h.wsHandler.NotifyConfigUpdate(config)
