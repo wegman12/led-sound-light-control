@@ -2,3 +2,5 @@
 *.bin
 
 pru/audio/scripts/audio-util-bbb
+
+hardware/device-tree/BB-I2S-PRU-00A0.dtbo
