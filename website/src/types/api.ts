@@ -40,7 +40,7 @@ export interface AudioModulatorConfig {
   frequency_band: FrequencyBand;
   min_power_value: number;
   max_power_value: number;
-  scaling_factor: number;
+  max_magnitude: number;
   noise_threshold: number;
   smoothing: number;
   fallback_power: number | null;
@@ -82,7 +82,7 @@ export interface AudioStatusResponse {
 }
 
 export interface AudioBandConfig {
-  scaling_factor: number;
+  max_magnitude: number;
   noise_threshold: number;
 }
 
@@ -112,7 +112,7 @@ export interface SimulationResponse {
 }
 
 export interface AudioTuningBandConfig {
-  scaling_factor: number;
+  max_magnitude: number;
   noise_threshold: number;
   min_power_value: number;
   max_power_value: number;

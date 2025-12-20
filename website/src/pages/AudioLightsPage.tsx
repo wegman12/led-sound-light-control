@@ -186,7 +186,7 @@ export default function AudioLightsPage() {
       frequency_band: config.frequencyBand,
       min_power_value: config.minPower,
       max_power_value: config.maxPower,
-      scaling_factor: bandConfig?.scaling_factor || 0.000001,
+      max_magnitude: bandConfig?.max_magnitude || 1000000,
       noise_threshold: bandConfig?.noise_threshold || 0,
       smoothing: config.smoothing,
       fallback_power: 0.0,

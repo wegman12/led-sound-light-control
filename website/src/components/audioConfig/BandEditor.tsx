@@ -17,10 +17,10 @@ interface BandEditorProps {
 }
 
 export function BandEditor({ label, bandConfig, onChange, color }: BandEditorProps) {
-  const handleScalingChange = (value: string) => {
+  const handleMaxMagnitudeChange = (value: string) => {
     const num = parseFloat(value);
     if (!isNaN(num) && num > 0) {
-      onChange({ ...bandConfig, scaling_factor: num });
+      onChange({ ...bandConfig, max_magnitude: num });
     }
   };
 
@@ -31,6 +31,12 @@ export function BandEditor({ label, bandConfig, onChange, color }: BandEditorPro
     }
   };
 
+  const formatLargeNumber = (num: number): string => {
+    if (num >= 1e6) return `${(num / 1e6).toFixed(2)}e6`;
+    if (num >= 1e3) return `${(num / 1e3).toFixed(1)}e3`;
+    return num.toFixed(0);
+  };
+
   return (
     <Card sx={{ borderLeft: `4px solid ${color}`, height: '100%' }}>
       <CardContent>
@@ -39,13 +45,13 @@ export function BandEditor({ label, bandConfig, onChange, color }: BandEditorPro
         </Typography>
         <Stack spacing={2}>
           <TextField
-            label="Scaling Factor"
+            label="Max Magnitude"
             type="text"
-            value={bandConfig.scaling_factor.toExponential(6)}
-            onChange={(e) => handleScalingChange(e.target.value)}
+            value={formatLargeNumber(bandConfig.max_magnitude)}
+            onChange={(e) => handleMaxMagnitudeChange(e.target.value)}
             size="small"
             fullWidth
-            helperText="Converts raw magnitude to 0-1 range"
+            helperText="Raw value that maps to power 1.0"
           />
           <TextField
             label="Noise Threshold"

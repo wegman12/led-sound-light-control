@@ -17,7 +17,7 @@ func TestAudioPipelineIntegration(t *testing.T) {
 		"frequency_band": "bass",
 		"min_power_value": 0.1,
 		"max_power_value": 1.0,
-		"scaling_factor": 0.000001,
+		"max_magnitude": 1000000,
 		"noise_threshold": 92565436,
 		"smoothing": 0.3,
 		"fallback_power": 0.0
@@ -27,7 +27,7 @@ func TestAudioPipelineIntegration(t *testing.T) {
 		"frequency_band": "mid-low",
 		"min_power_value": 0.1,
 		"max_power_value": 1.0,
-		"scaling_factor": 0.000001,
+		"max_magnitude": 1000000,
 		"noise_threshold": 18541891,
 		"smoothing": 0.3,
 		"fallback_power": 0.0
@@ -37,7 +37,7 @@ func TestAudioPipelineIntegration(t *testing.T) {
 		"frequency_band": "treble",
 		"min_power_value": 0.0,
 		"max_power_value": 0.8,
-		"scaling_factor": 0.000027,
+		"max_magnitude": 37037,
 		"noise_threshold": 2258769,
 		"smoothing": 0.1,
 		"fallback_power": 0.0
@@ -136,7 +136,7 @@ func TestMultipleAudioModulatorsOnDifferentColors(t *testing.T) {
 			"frequency_band": "bass",
 			"min_power_value": 0.1,
 			"max_power_value": 1.0,
-			"scaling_factor": 0.000001,
+			"max_magnitude": 1000000,
 			"noise_threshold": 92565436,
 			"smoothing": 0.0
 		}`,
@@ -144,7 +144,7 @@ func TestMultipleAudioModulatorsOnDifferentColors(t *testing.T) {
 			"frequency_band": "mid-low",
 			"min_power_value": 0.1,
 			"max_power_value": 1.0,
-			"scaling_factor": 0.000001,
+			"max_magnitude": 1000000,
 			"noise_threshold": 18541891,
 			"smoothing": 0.0
 		}`,
@@ -152,7 +152,7 @@ func TestMultipleAudioModulatorsOnDifferentColors(t *testing.T) {
 			"frequency_band": "treble",
 			"min_power_value": 0.0,
 			"max_power_value": 1.0,
-			"scaling_factor": 0.000027,
+			"max_magnitude": 37037,
 			"noise_threshold": 2258769,
 			"smoothing": 0.0
 		}`,
@@ -231,7 +231,7 @@ func TestMixedAudioAndTimeBasedBehaviors(t *testing.T) {
 		"frequency_band": "bass",
 		"min_power_value": 0.2,
 		"max_power_value": 1.0,
-		"scaling_factor": 0.000001,
+		"max_magnitude": 1000000,
 		"noise_threshold": 92565436,
 		"smoothing": 0.0,
 		"fallback_power": 0.0
@@ -288,7 +288,7 @@ func TestAudioBehaviorWithNilAudioProvider(t *testing.T) {
 		"frequency_band": "bass",
 		"min_power_value": 0.0,
 		"max_power_value": 1.0,
-		"scaling_factor": 0.000001,
+		"max_magnitude": 1000000,
 		"noise_threshold": 92565436
 	}`)
 
@@ -308,7 +308,7 @@ func TestAudioBehaviorSmoothingOverTime(t *testing.T) {
 		"frequency_band": "bass",
 		"min_power_value": 0.0,
 		"max_power_value": 1.0,
-		"scaling_factor": 0.000001,
+		"max_magnitude": 1000000,
 		"noise_threshold": 0,
 		"smoothing": 0.9
 	}`)
@@ -374,7 +374,7 @@ func BenchmarkAudioPipelineThroughput(b *testing.B) {
 		"frequency_band": "bass",
 		"min_power_value": 0.0,
 		"max_power_value": 1.0,
-		"scaling_factor": 0.000001,
+		"max_magnitude": 1000000,
 		"noise_threshold": 92565436,
 		"smoothing": 0.3
 	}`)

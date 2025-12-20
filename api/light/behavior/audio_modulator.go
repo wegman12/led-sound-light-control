@@ -20,10 +20,11 @@ type AudioModulatorConfig struct {
 	// MaxPowerValue is the maximum LED power output (0.0-1.0)
 	MaxPowerValue float64 `json:"max_power_value"`
 
-	// ScalingFactor converts raw audio magnitude to 0-1 range
+	// MaxMagnitude is the raw audio magnitude that corresponds to power value 1.0
+	// Raw values are divided by this to get normalized 0-1 range
 	// Recommended values from analysis:
-	//   Bass: 0.000001, Mid-Low: 0.000001, Mid-High: 0.000002, Treble: 0.000027
-	ScalingFactor float64 `json:"scaling_factor"`
+	//   Bass: 1000000, Mid-Low: 1000000, Mid-High: 500000, Treble: 37037
+	MaxMagnitude float64 `json:"max_magnitude"`
 
 	// NoiseThreshold filters out background noise (raw magnitude units)
 	// Values below this threshold are treated as zero
@@ -103,9 +104,9 @@ func validateAudioModulatorConfig(config *AudioModulatorConfig) error {
 			config.MinPowerValue, config.MaxPowerValue)
 	}
 
-	// Validate scaling factor
-	if config.ScalingFactor < 0 {
-		return fmt.Errorf("scaling_factor must be non-negative, got %f", config.ScalingFactor)
+	// Validate max magnitude
+	if config.MaxMagnitude <= 0 {
+		return fmt.Errorf("max_magnitude must be positive, got %f", config.MaxMagnitude)
 	}
 
 	// Validate smoothing
@@ -155,8 +156,8 @@ func (a *AudioModulator) GetPower(t time.Duration) *float64 {
 		rawValue = 0.0
 	}
 
-	// Scale to 0-1 range
-	scaledValue := rawValue * a.config.ScalingFactor
+	// Scale to 0-1 range by dividing by max magnitude
+	scaledValue := rawValue / a.config.MaxMagnitude
 
 	// Clamp to configured min/max range
 	power := clamp(scaledValue, a.config.MinPowerValue, a.config.MaxPowerValue)

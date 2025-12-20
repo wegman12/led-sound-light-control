@@ -30,7 +30,7 @@ func TestNewAudioModulator_ValidConfig(t *testing.T) {
 		FrequencyBand:  "bass",
 		MinPowerValue:  0.0,
 		MaxPowerValue:  1.0,
-		ScalingFactor:  0.000001,
+		MaxMagnitude:   1000000,
 		NoiseThreshold: 1000000,
 		Smoothing:      0.3,
 	}
@@ -60,7 +60,7 @@ func TestNewAudioModulator_InvalidFrequencyBand(t *testing.T) {
 		FrequencyBand:  "invalid",
 		MinPowerValue:  0.0,
 		MaxPowerValue:  1.0,
-		ScalingFactor:  0.000001,
+		MaxMagnitude:   1000000,
 		NoiseThreshold: 1000000,
 	}
 
@@ -94,7 +94,7 @@ func TestNewAudioModulator_InvalidPowerRange(t *testing.T) {
 				FrequencyBand:  "bass",
 				MinPowerValue:  tt.min,
 				MaxPowerValue:  tt.max,
-				ScalingFactor:  0.000001,
+				MaxMagnitude:   1000000,
 				NoiseThreshold: 1000000,
 			}
 
@@ -115,7 +115,7 @@ func TestAudioModulator_GetPower_NoAudioData(t *testing.T) {
 		FrequencyBand:  "bass",
 		MinPowerValue:  0.0,
 		MaxPowerValue:  1.0,
-		ScalingFactor:  0.000001,
+		MaxMagnitude:   1000000,
 		NoiseThreshold: 1000000,
 		FallbackPower:  &fallback,
 	}
@@ -151,7 +151,7 @@ func TestAudioModulator_GetPower_BassExtraction(t *testing.T) {
 		FrequencyBand:  "bass",
 		MinPowerValue:  0.0,
 		MaxPowerValue:  1.0,
-		ScalingFactor:  0.000001, // 100000 * 0.000001 = 0.1
+		MaxMagnitude:   1000000, // 100000 * 0.000001 = 0.1
 		NoiseThreshold: 1000,     // Below bass value
 		Smoothing:      0.0,
 	}
@@ -196,7 +196,7 @@ func TestAudioModulator_GetPower_AllBands(t *testing.T) {
 				FrequencyBand:  tt.band,
 				MinPowerValue:  0.0,
 				MaxPowerValue:  1.0,
-				ScalingFactor:  0.000001,
+				MaxMagnitude:   1000000,
 				NoiseThreshold: 1000,
 				Smoothing:      0.0,
 			}
@@ -228,7 +228,7 @@ func TestAudioModulator_NoiseThreshold(t *testing.T) {
 		FrequencyBand:  "bass",
 		MinPowerValue:  0.0,
 		MaxPowerValue:  1.0,
-		ScalingFactor:  0.000001,
+		MaxMagnitude:   1000000,
 		NoiseThreshold: 10000.0, // Above bass value
 		Smoothing:      0.0,
 	}
@@ -249,16 +249,16 @@ func TestAudioModulator_NoiseThreshold(t *testing.T) {
 
 func TestAudioModulator_Clamping(t *testing.T) {
 	tests := []struct {
-		name          string
-		rawValue      float64
-		scalingFactor float64
-		minPower      float64
-		maxPower      float64
-		expected      float64
+		name         string
+		rawValue     float64
+		maxMagnitude float64
+		minPower     float64
+		maxPower     float64
+		expected     float64
 	}{
-		{"below min", 1000.0, 0.00001, 0.5, 1.0, 0.5},   // 0.01 clamped to 0.5
-		{"above max", 200000.0, 0.000001, 0.0, 0.1, 0.1}, // 0.2 clamped to 0.1
-		{"within range", 50000.0, 0.000001, 0.0, 1.0, 0.05}, // 0.05 unchanged
+		{"below min", 1000.0, 100000, 0.5, 1.0, 0.5},     // 0.01 clamped to 0.5
+		{"above max", 200000.0, 1000000, 0.0, 0.1, 0.1},  // 0.2 clamped to 0.1
+		{"within range", 50000.0, 1000000, 0.0, 1.0, 0.05}, // 0.05 unchanged
 	}
 
 	for _, tt := range tests {
@@ -274,7 +274,7 @@ func TestAudioModulator_Clamping(t *testing.T) {
 				FrequencyBand:  "bass",
 				MinPowerValue:  tt.minPower,
 				MaxPowerValue:  tt.maxPower,
-				ScalingFactor:  tt.scalingFactor,
+				MaxMagnitude:   tt.maxMagnitude,
 				NoiseThreshold: 0,
 				Smoothing:      0.0,
 			}
@@ -306,7 +306,7 @@ func TestAudioModulator_Smoothing(t *testing.T) {
 		FrequencyBand:  "bass",
 		MinPowerValue:  0.0,
 		MaxPowerValue:  1.0,
-		ScalingFactor:  0.000001,
+		MaxMagnitude:   1000000,
 		NoiseThreshold: 0,
 		Smoothing:      0.5, // 50% smoothing
 	}
@@ -351,7 +351,7 @@ func TestAudioModulator_CustomWeight(t *testing.T) {
 		FrequencyBand:  "bass",
 		MinPowerValue:  0.0,
 		MaxPowerValue:  1.0,
-		ScalingFactor:  0.000001,
+		MaxMagnitude:   1000000,
 		NoiseThreshold: 0,
 		BehaviorWeight: customWeight,
 	}
@@ -440,7 +440,7 @@ func BenchmarkAudioModulator_GetPower(b *testing.B) {
 		FrequencyBand:  "bass",
 		MinPowerValue:  0.0,
 		MaxPowerValue:  1.0,
-		ScalingFactor:  0.000001,
+		MaxMagnitude:   1000000,
 		NoiseThreshold: 1000,
 		Smoothing:      0.3,
 	}

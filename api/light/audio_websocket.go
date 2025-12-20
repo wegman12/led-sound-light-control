@@ -200,8 +200,8 @@ func (h *AudioWebSocketHandler) processBandValue(rawValue float64, bandConfig Au
 	// Subtract noise floor
 	adjustedValue := rawValue - bandConfig.NoiseThreshold
 
-	// Scale to 0-1 range
-	scaledValue := adjustedValue * bandConfig.ScalingFactor
+	// Scale to 0-1 range by dividing by max magnitude
+	scaledValue := adjustedValue / bandConfig.MaxMagnitude
 
 	// Clamp to [0, 1]
 	if scaledValue < 0 {

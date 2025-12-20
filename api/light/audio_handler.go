@@ -53,7 +53,7 @@ type AudioStatusResponse struct {
 
 // AudioBandConfig contains recommended configuration for a frequency band
 type AudioBandConfig struct {
-	ScalingFactor  float64 `json:"scaling_factor"`
+	MaxMagnitude   float64 `json:"max_magnitude"`
 	NoiseThreshold float64 `json:"noise_threshold"`
 }
 
@@ -250,19 +250,19 @@ func (h *AudioHandler) handleAudioConfig(w http.ResponseWriter, r *http.Request)
 	// Based on analysis of bagpipes.csv, crazy_frog.csv, and christmas.csv
 	config := AudioScalingConfig{
 		Bass: AudioBandConfig{
-			ScalingFactor:  0.000001,
+			MaxMagnitude:   1000000,
 			NoiseThreshold: 92565436,
 		},
 		MidLow: AudioBandConfig{
-			ScalingFactor:  0.000001,
+			MaxMagnitude:   1000000,
 			NoiseThreshold: 18541891,
 		},
 		MidHigh: AudioBandConfig{
-			ScalingFactor:  0.000002,
+			MaxMagnitude:   500000,
 			NoiseThreshold: 10913229,
 		},
 		Treble: AudioBandConfig{
-			ScalingFactor:  0.000027,
+			MaxMagnitude:   37037,
 			NoiseThreshold: 2258769,
 		},
 	}

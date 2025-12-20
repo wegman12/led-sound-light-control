@@ -12,7 +12,7 @@ import (
 
 // AudioTuningBandConfig contains tuning parameters for a single frequency band
 type AudioTuningBandConfig struct {
-	ScalingFactor  float64 `json:"scaling_factor"`
+	MaxMagnitude   float64 `json:"max_magnitude"`
 	NoiseThreshold float64 `json:"noise_threshold"`
 	MinPowerValue  float64 `json:"min_power_value"`
 	MaxPowerValue  float64 `json:"max_power_value"`
@@ -72,28 +72,28 @@ func getDefaultAudioTuningConfig() AudioTuningConfig {
 		MidHighCutoff: 500,  // Mid-Low: 100-500 Hz (mid-bass, warmth)
 		TrebleCutoff:  2000, // Mid-High: 500-2000 Hz (clarity, presence), Treble: 2000+ Hz
 		Bass: AudioTuningBandConfig{
-			ScalingFactor:  0.000001,
+			MaxMagnitude:   1000000,
 			NoiseThreshold: 92565436,
 			MinPowerValue:  0.0,
 			MaxPowerValue:  1.0,
 			Smoothing:      0.3,
 		},
 		MidLow: AudioTuningBandConfig{
-			ScalingFactor:  0.000001,
+			MaxMagnitude:   1000000,
 			NoiseThreshold: 18541891,
 			MinPowerValue:  0.0,
 			MaxPowerValue:  1.0,
 			Smoothing:      0.3,
 		},
 		MidHigh: AudioTuningBandConfig{
-			ScalingFactor:  0.000002,
+			MaxMagnitude:   500000,
 			NoiseThreshold: 10913229,
 			MinPowerValue:  0.0,
 			MaxPowerValue:  1.0,
 			Smoothing:      0.3,
 		},
 		Treble: AudioTuningBandConfig{
-			ScalingFactor:  0.000027,
+			MaxMagnitude:   37037,
 			NoiseThreshold: 2258769,
 			MinPowerValue:  0.0,
 			MaxPowerValue:  1.0,
@@ -214,8 +214,8 @@ func (m *AudioTuningConfigManager) validateConfig(config *AudioTuningConfig) err
 
 // validateBandConfig validates a single band configuration
 func validateBandConfig(name string, config *AudioTuningBandConfig) error {
-	if config.ScalingFactor <= 0 {
-		return fmt.Errorf("%s: scaling_factor must be positive, got %f", name, config.ScalingFactor)
+	if config.MaxMagnitude <= 0 {
+		return fmt.Errorf("%s: max_magnitude must be positive, got %f", name, config.MaxMagnitude)
 	}
 	if config.NoiseThreshold < 0 {
 		return fmt.Errorf("%s: noise_threshold must be non-negative, got %f", name, config.NoiseThreshold)
