@@ -41,7 +41,7 @@ except ImportError:
 @dataclass
 class AudioConfig:
     """Configuration for audio processing"""
-    sample_rate: int = 32000  # Hz (I2S actual rate ~32 kHz)
+    sample_rate: int = 47000  # Hz (I2S actual rate ~47 kHz)
     fft_size: int = 1024
     window_type: str = "hann"
     smoothing_alpha: float = 0.7
@@ -634,7 +634,7 @@ Examples:
     print()
 
     # Load samples
-    sample_rate = 32000  # I2S actual rate
+    sample_rate = 47000  # I2S actual rate (~47 kHz)
     print(f"Loading baseline samples from: {args.baseline_file}")
     baseline_samples = load_raw_samples(args.baseline_file)
     print(f"  Loaded {len(baseline_samples)} samples ({len(baseline_samples) / sample_rate:.2f} seconds)")
