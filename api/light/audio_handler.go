@@ -147,10 +147,10 @@ func (h *AudioHandler) handleAudioStart(w http.ResponseWriter, r *http.Request) 
 				// Convert PRU SoundProfile to behavior AudioProfile
 				// Use the Avg values (average magnitude per bin)
 				audioProfile := behavior.AudioProfile{
-					Bass:      float64(profile.BassSum),
-					MidLow:    float64(profile.MidLowSum),
-					MidHigh:   float64(profile.MidHighSum),
-					Treble:    float64(profile.TrebleSum),
+					Bass:      float64(profile.BassAvg),
+					MidLow:    float64(profile.MidLowAvg),
+					MidHigh:   float64(profile.MidHighAvg),
+					Treble:    float64(profile.TrebleAvg),
 					Timestamp: time.Now(),
 				}
 
