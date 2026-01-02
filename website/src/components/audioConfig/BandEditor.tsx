@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Box,
   Card,
@@ -17,11 +18,18 @@ interface BandEditorProps {
 }
 
 export function BandEditor({ label, bandConfig, onChange, color }: BandEditorProps) {
+  const [maxMagnitudeInput, setMaxMagnitudeInput] = useState<string | null>(null);
+
   const handleMaxMagnitudeChange = (value: string) => {
+    setMaxMagnitudeInput(value);
     const num = parseFloat(value);
     if (!isNaN(num) && num > 0) {
       onChange({ ...bandConfig, max_magnitude: num });
     }
+  };
+
+  const handleMaxMagnitudeBlur = () => {
+    setMaxMagnitudeInput(null);
   };
 
   const handleNoiseChange = (value: string) => {
@@ -47,8 +55,9 @@ export function BandEditor({ label, bandConfig, onChange, color }: BandEditorPro
           <TextField
             label="Max Magnitude"
             type="text"
-            value={formatLargeNumber(bandConfig.max_magnitude)}
+            value={maxMagnitudeInput ?? formatLargeNumber(bandConfig.max_magnitude)}
             onChange={(e) => handleMaxMagnitudeChange(e.target.value)}
+            onBlur={handleMaxMagnitudeBlur}
             size="small"
             fullWidth
             helperText="Raw value that maps to power 1.0"
