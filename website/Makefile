@@ -2,6 +2,7 @@
 
 # Configuration
 DEPLOY_HOST ?= bbb1.wegman
+DEPLOY_URL  ?= lights.wegmanhome.com
 
 # Default target
 help:
@@ -50,8 +51,8 @@ clean:
 
 # Build and deploy to server
 deploy:
-	@echo "Building for production with API URL: http://$(DEPLOY_HOST):8080..."
-	VITE_API_BASE_URL=http://$(DEPLOY_HOST):8080 npm run build
+	@echo "Building for production (same-origin API at https://$(DEPLOY_URL)/api)..."
+	npm run build
 	@echo "Deploying to $(DEPLOY_HOST):/usr/share/nginx/html..."
 	rsync -avz --delete dist/ $(DEPLOY_HOST):/usr/share/nginx/html/
 	@echo "Deployment complete!"

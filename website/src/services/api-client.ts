@@ -1,4 +1,8 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+// Empty by default: the app is served from the same origin as the API
+// (Traefik routes /api and /health on lights.wegmanhome.com to the Go server,
+// everything else to nginx), so relative URLs inherit scheme, host and port.
+// Set VITE_API_BASE_URL only for local development against a remote API.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export class ApiError extends Error {
   status: number;
@@ -65,7 +69,15 @@ export async function del<T>(endpoint: string): Promise<T> {
 }
 
 export function getWebSocketUrl(endpoint: string): string {
-  const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
-  const url = API_BASE_URL.replace(/^https?:\/\//, '');
-  return `${wsProtocol}://${url}${endpoint}`;
+  // Explicit base (local dev): derive the host from it.
+  if (API_BASE_URL) {
+    const wsProtocol = API_BASE_URL.startsWith('https') ? 'wss' : 'ws';
+    const url = API_BASE_URL.replace(/^https?:\/\//, '');
+    return `${wsProtocol}://${url}${endpoint}`;
+  }
+
+  // Same-origin: follow the page scheme so an https page gets wss, which
+  // browsers require — a ws:// socket on an https page is blocked outright.
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${wsProtocol}://${window.location.host}${endpoint}`;
 }
