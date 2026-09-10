@@ -1,0 +1,38 @@
+{
+  "behaviors": [
+    {
+      "color": "red",
+      "behavior_type": "fixed",
+      "config": {
+        "power_value": 0.3
+      }
+    },
+    {
+      "color": "green",
+      "behavior_type": "fixed",
+      "config": {
+        "power_value": 0.2
+      }
+    },
+    {
+      "color": "blue",
+      "behavior_type": "fixed",
+      "config": {
+        "power_value": 0.4
+      }
+    },
+    {
+      "color": "white",
+      "behavior_type": "audio_modulator",
+      "config": {
+        "frequency_band": "treble",
+        "min_power_value": 0.0,
+        "max_power_value": 1.0,
+        "scaling_factor": 0.000027,
+        "noise_threshold": 2258769,
+        "smoothing": 0.1,
+        "fallback_power": 0.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "behaviors": [
+    {
+      "behavior_type": "skipper",
+      "color": "white",
+      "config": {
+	      "duration": "3s"
+      }
+    }
+  ]
+}

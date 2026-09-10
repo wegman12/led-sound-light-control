@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Poetry
+poetry.lock
+
+# Analysis outputs
+analysis_summary.csv
+snr_analysis.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

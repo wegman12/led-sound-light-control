@@ -1,0 +1,39 @@
+###
+POST http://bbb2.wegman:8080/api/lights/behavior/register
+Content-Type: application/json
+
+{
+  "behaviors": [
+    {
+      "behavior_type": "fixed",
+      "color": "red",
+      "config": {
+        "power_value": 1.0
+      }
+    },
+    {
+      "behavior_type": "fixed",
+      "color": "blue",
+      "config": {
+        "power_value": 1.0
+      }
+    },
+    {
+      "behavior_type": "fixed",
+      "color": "green",
+      "config": {
+        "power_value": 1.0
+      }
+    },
+    {
+      "behavior_type": "fixed",
+      "color": "white",
+      "config": {
+        "power_value": 1.00
+      }
+    }
+  ]
+}
+
+###
+POST http://bbb2.wegman:8080/api/lights/on

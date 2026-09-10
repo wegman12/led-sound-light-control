@@ -1,0 +1,58 @@
+/*
+ * Simple PWM overlay - just enable devices without pinmux
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "ti,beaglebone", "ti,beaglebone-black", "ti,beaglebone-green";
+
+    part-number = "BB-PWM";
+    version = "00A0";
+
+    /* EPWMSS0 */
+    fragment@0 {
+        target = <&epwmss0>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    fragment@1 {
+        target = <&ehrpwm0>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    /* EPWMSS1 */
+    fragment@2 {
+        target = <&epwmss1>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    fragment@3 {
+        target = <&ehrpwm1>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    /* EPWMSS2 */
+    fragment@4 {
+        target = <&epwmss2>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    fragment@5 {
+        target = <&ehrpwm2>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+};

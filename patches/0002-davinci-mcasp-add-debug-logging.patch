@@ -1,0 +1,23 @@
+diff --git a/sound/soc/ti/davinci-mcasp.c b/sound/soc/ti/davinci-mcasp.c
+index f8ee5d829a61..1bec49fe61b6 100644
+--- a/sound/soc/ti/davinci-mcasp.c
++++ b/sound/soc/ti/davinci-mcasp.c
+@@ -239,6 +239,18 @@ static void mcasp_start_rx(struct davinci_mcasp *mcasp)
+ 	if (mcasp_is_synchronous(mcasp))
+ 		mcasp_set_ctl_reg(mcasp, DAVINCI_MCASP_GBLCTLX_REG, TXFSRST);
+ 
++	/*
++	 * CRITICAL FIX: Re-enable AHCLK after clock reset sequence.
++	 * Hardware clears AHCLKXE/AHCLKRE bits when releasing clock dividers
++	 * from reset (TXCLKRST/RXCLKRST). Must re-enable them here.
++	 * Without this, external clock on AHCLKR is not received.
++	 */
++	if (mcasp->bclk_master) {
++		dev_info(mcasp->dev, "Re-enabling AHCLK after reset (fix for hardware clearing bits)\n");
++		mcasp_set_bits(mcasp, DAVINCI_MCASP_AHCLKXCTL_REG, AHCLKXE);
++		mcasp_set_bits(mcasp, DAVINCI_MCASP_AHCLKRCTL_REG, AHCLKRE);
++	}
++
+ 	/* enable receive IRQs */
+ 	mcasp_set_bits(mcasp, DAVINCI_MCASP_EVTCTLR_REG,
+ 		       mcasp->irq_request[SNDRV_PCM_STREAM_CAPTURE]);
